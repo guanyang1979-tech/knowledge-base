@@ -1,0 +1,33 @@
+# Node modules
+node_modules/
+
+# Build output
+dist/
+dist-electron/
+release/
+
+# Electron runtime (should never be in source tree)
+electron.exe
+electron-v*.zip
+locales/
+resources/
+
+# Runtime DLLs and assets
+*.dll
+*.pak
+icudtl.dat
+snapshot_blob.bin
+v8_context_snapshot.bin
+v8_context_snapshot_blob.bin
+version
+LICENSE
+LICENSES.chromium.html
+vk_swiftshader_icd.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
