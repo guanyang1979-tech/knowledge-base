@@ -30,7 +30,8 @@ const defaultConfig = {
   notesDir: '',
   obsidianVaultPath: '',
   obsidianAutoSync: false,
-  obsidianExcludeFolders: ['.obsidian', 'node_modules', '.git']
+  obsidianExcludeFolders: ['.obsidian', 'node_modules', '.git'],
+  hiddenCategories: ['Obsidian同步']
 }
 
 // 加载配置
@@ -61,17 +62,50 @@ let config = loadConfig()
 let mainWindow: BrowserWindow | null = null
 let fileWatcher: ReturnType<typeof watch> | null = null
 
+// 日志缓冲区
+let logBuffer: string[] = []
+let logFlushTimer: ReturnType<typeof setInterval> | null = null
+const LOG_FLUSH_INTERVAL = 5000 // 5秒刷新一次日志
+
 // 日志函数
 function log(level: string, message: string, data?: any) {
+  // 生产环境减少日志输出
+  if (process.env.NODE_ENV === 'production' && level === 'DEBUG') {
+    return
+  }
+
   const timestamp = new Date().toISOString()
   const logMessage = `[${timestamp}] [${level}] ${message}${data ? ' ' + JSON.stringify(data) : ''}`
   console.log(logMessage)
 
+  // 添加到缓冲区
+  logBuffer.push(logMessage)
+
+  // 如果还没有启动定时器，启动一个
+  if (!logFlushTimer) {
+    logFlushTimer = setInterval(flushLogBuffer, LOG_FLUSH_INTERVAL)
+  }
+}
+
+// 刷新日志缓冲区到文件
+function flushLogBuffer() {
+  if (logBuffer.length === 0) return
+
   const logDir = app.getPath('userData')
   const logFile = path.join(logDir, 'app.log')
   try {
-    fs.appendFileSync(logFile, logMessage + '\n')
+    fs.appendFileSync(logFile, logBuffer.join('\n') + '\n')
+    logBuffer = []
   } catch {}
+}
+
+// 应用退出时刷新日志
+function cleanupLog() {
+  if (logFlushTimer) {
+    clearInterval(logFlushTimer)
+    logFlushTimer = null
+  }
+  flushLogBuffer()
 }
 
 function createWindow() {
@@ -83,7 +117,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     },
@@ -109,12 +143,14 @@ function createWindow() {
 }
 
 function createMenu() {
-  const template = [
+  const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: '文件',
       submenu: [
         { label: '新建笔记', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('menu-new-note') },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => mainWindow?.webContents.send('menu-save') },
+        { type: 'separator' },
+        { label: '导出当前笔记', accelerator: 'CmdOrCtrl+E', click: () => mainWindow?.webContents.send('menu-export-note') },
         { type: 'separator' },
         { label: '退出', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() }
       ]
@@ -137,6 +173,11 @@ function createMenu() {
         { label: '刷新', accelerator: 'CmdOrCtrl+R', role: 'reload' },
         { label: '强制刷新', accelerator: 'CmdOrCtrl+Shift+R', role: 'forceReload' },
         { type: 'separator' },
+        { label: '搜索笔记', accelerator: 'CmdOrCtrl+F', click: () => mainWindow?.webContents.send('menu-focus-search') },
+        { label: '全局搜索', accelerator: 'CmdOrCtrl+Shift+F', click: () => mainWindow?.webContents.send('menu-global-search') },
+        { type: 'separator' },
+        { label: '切换侧边栏', accelerator: 'CmdOrCtrl+Shift+D', click: () => mainWindow?.webContents.send('menu-toggle-sidebar') },
+        { type: 'separator' },
         { label: '实际大小', accelerator: 'CmdOrCtrl+0', role: 'resetZoom' },
         { label: '放大', accelerator: 'CmdOrCtrl+Plus', role: 'zoomIn' },
         { label: '缩小', accelerator: 'CmdOrCtrl+-', role: 'zoomOut' },
@@ -153,7 +194,7 @@ function createMenu() {
             dialog.showMessageBox(mainWindow!, {
               type: 'info',
               title: '关于知识库助手',
-              message: '知识库助手 v1.0.0',
+              message: '知识库助手 v2.1.0',
               detail: '一个基于 AI 的个人知识库管理系统。'
             })
           }
@@ -219,15 +260,22 @@ function setupIpcHandlers() {
             if (stat.isDirectory()) {
               scanDir(filePath)
             } else if (file.endsWith('.md')) {
-              const content = fs.readFileSync(filePath, 'utf-8')
               const relativePath = path.relative(notesDir, filePath)
               const pathParts = relativePath.split(path.sep)
               const category = pathParts.length > 1 ? pathParts[0] : '根目录'
 
               let tags: string[] = []
               let title = file.replace('.md', '')
+              let preview = ''
 
-              const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
+              // 只读取前 500 字节用于提取元数据，不读取完整内容
+              const fd = fs.openSync(filePath, 'r')
+              const buffer = Buffer.alloc(500)
+              const bytesRead = fs.readSync(fd, buffer, 0, 500, 0)
+              fs.closeSync(fd)
+              const headContent = buffer.toString('utf-8', 0, bytesRead)
+
+              const frontmatterMatch = headContent.match(/^---\n([\s\S]*?)\n---/)
               if (frontmatterMatch) {
                 const frontmatter = frontmatterMatch[1]
                 const titleMatch = frontmatter.match(/title:\s*(.+)/)
@@ -236,7 +284,12 @@ function setupIpcHandlers() {
                 if (tagsMatch) tags = tagsMatch[1].split(',').map((t: string) => t.trim()).filter((t: string) => t)
               }
 
-              notes.push({ id: relativePath, path: filePath, title, category, tags, content, updatedAt: stat.mtime.toISOString() })
+              // 提取预览内容（移除 frontmatter 和标题）
+              const withoutFM = headContent.replace(/^---[\s\S]*?---\n/, '')
+              const withoutTitle = withoutFM.replace(/^#\s+.+$/m, '')
+              preview = withoutTitle.substring(0, 100).replace(/\n/g, ' ').trim()
+
+              notes.push({ id: relativePath, path: filePath, title, category, tags, preview, updatedAt: stat.mtime.toISOString() })
             }
           } catch {}
         })
@@ -305,6 +358,27 @@ created: ${new Date().toISOString()}
   // 分类相关
   ipcMain.handle('get-categories', () => {
     const notesDir = getNotesDir()
+    const config = loadConfig()
+    const hidden = config.hiddenCategories || []
+    const categories: string[] = []
+    if (fs.existsSync(notesDir)) {
+      try {
+        fs.readdirSync(notesDir).forEach(file => {
+          const filePath = path.join(notesDir, file)
+          try {
+            if (fs.statSync(filePath).isDirectory() && !hidden.includes(file)) {
+              categories.push(file)
+            }
+          } catch {}
+        })
+      } catch {}
+    }
+    return categories
+  })
+
+  // 获取所有分类（包括隐藏的）
+  ipcMain.handle('get-all-categories', () => {
+    const notesDir = getNotesDir()
     const categories: string[] = []
     if (fs.existsSync(notesDir)) {
       try {
@@ -317,6 +391,52 @@ created: ${new Date().toISOString()}
       } catch {}
     }
     return categories
+  })
+
+  // 重命名分类
+  ipcMain.handle('rename-category', (_, oldName: string, newName: string) => {
+    const notesDir = getNotesDir()
+    const oldPath = path.join(notesDir, oldName)
+    const newPath = path.join(notesDir, newName)
+    try {
+      if (!fs.existsSync(oldPath)) {
+        return { success: false, error: `分类 "${oldName}" 不存在` }
+      }
+      if (fs.existsSync(newPath)) {
+        return { success: false, error: `分类 "${newName}" 已存在` }
+      }
+      fs.renameSync(oldPath, newPath)
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 切换分类隐藏状态
+  ipcMain.handle('toggle-category-hidden', (_, categoryName: string) => {
+    const config = loadConfig()
+    if (!config.hiddenCategories) config.hiddenCategories = []
+    const idx = config.hiddenCategories.indexOf(categoryName)
+    if (idx >= 0) {
+      config.hiddenCategories.splice(idx, 1)
+    } else {
+      config.hiddenCategories.push(categoryName)
+    }
+    saveConfig(config)
+    return { success: true, hidden: config.hiddenCategories.includes(categoryName) }
+  })
+
+  // 获取隐藏分类列表
+  ipcMain.handle('get-hidden-categories', () => {
+    const config = loadConfig()
+    return config.hiddenCategories || []
+  })
+
+  // 检查分类目录是否存在
+  ipcMain.handle('check-category-exists', (_, categoryName: string) => {
+    const notesDir = getNotesDir()
+    const dirPath = path.join(notesDir, categoryName)
+    return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()
   })
 
   // 模板相关
@@ -544,17 +664,42 @@ created: ${new Date().toISOString()}
         const baseName = path.basename(fp, ext)
         const targetCategoryDir = path.join(targetDir, category || '文档库')
         if (!fs.existsSync(targetCategoryDir)) fs.mkdirSync(targetCategoryDir, { recursive: true })
+
         let content = ''
         let title = baseName
-        try {
-          if (['.md', '.txt'].includes(ext)) { content = fs.readFileSync(fp, 'utf-8'); const tm = content.match(/^#\s+(.+)$/m); if (tm) title = tm[1] }
-          else content = fs.readFileSync(fp, 'utf-8')
-        } catch { content = '' }
+        const metadata: any = { source_file: path.basename(fp), imported_at: new Date().toISOString() }
+
+        switch (ext) {
+          case '.md': case '.txt':
+            content = fs.readFileSync(fp, 'utf-8')
+            const titleMatch = content.match(/^#\s+(.+)$/m)
+            if (titleMatch) title = titleMatch[1]
+            break
+          case '.docx':
+            if (mammoth) { content = (await mammoth.extractRawText({ path: fp })).value; const fl = content.split('\n')[0]?.trim(); if (fl && fl.length < 100) title = fl }
+            break
+          case '.xlsx': case '.xls':
+            if (xlsx) {
+              const workbook = xlsx.readFile(fp)
+              const data: any = {}
+              workbook.SheetNames.forEach((sn: string) => { const sheet = workbook.Sheets[sn]; data[sn] = (xlsx.utils.sheet_to_json(sheet, { header: 1 }) as any[][]).map(row => row.join(' | ')).join('\n') })
+              content = Object.entries(data).map(([sn, sd]) => `## ${sn}\n\n${sd}`).join('\n\n---\n\n')
+            }
+            break
+          case '.pdf':
+            if (pdfParse) { const pdfData = fs.readFileSync(fp); const pdfContent = await pdfParse(pdfData); content = pdfContent.text; metadata.pages = String(pdfContent.numpages) }
+            break
+          default:
+            try { content = fs.readFileSync(fp, 'utf-8') } catch { results.push({ filePath: fp, success: false, error: `不支持的文件格式: ${ext}` }); continue }
+        }
+
         let finalFileName = `${title}.md`
         let targetPath = path.join(targetCategoryDir, finalFileName)
         let counter = 1
         while (fs.existsSync(targetPath)) { finalFileName = `${title}_${counter}.md`; targetPath = path.join(targetCategoryDir, finalFileName); counter++ }
-        fs.writeFileSync(targetPath, `---\ntitle: ${title}\nsource_file: ${path.basename(fp)}\nimported_at: ${new Date().toISOString()}\n---\n\n# ${title}\n\n${content}`, 'utf-8')
+
+        const metadataStr = Object.entries(metadata).map(([k, v]) => `${k}: ${v}`).join('\n')
+        fs.writeFileSync(targetPath, `---\ntitle: ${title}\n${metadataStr}\n---\n\n# ${title}\n\n${content}`, 'utf-8')
         results.push({ filePath: fp, success: true, path: targetPath })
       } catch (error: any) { results.push({ filePath: fp, success: false, error: error.message }) }
     }
@@ -586,7 +731,7 @@ created: ${new Date().toISOString()}
         })
       } catch {}
     }
-    return notes
+    return { success: true, notes }
   })
 
   ipcMain.handle('restore-from-trash', async (_, trashPath: string, notesDir: string) => {
@@ -760,11 +905,25 @@ app.whenReady().then(async () => {
   setupIpcHandlers()
   createWindow()
   createMenu()
+
+  // 监听菜单事件
+  mainWindow?.on('ready-to-show', () => {
+    // 搜索相关
+    ipcMain.on('menu-focus-search', () => mainWindow?.webContents.send('menu-focus-search'))
+    ipcMain.on('menu-global-search', () => mainWindow?.webContents.send('menu-global-search'))
+
+    // 视图相关
+    ipcMain.on('menu-toggle-sidebar', () => mainWindow?.webContents.send('menu-toggle-sidebar'))
+
+    // 文件相关
+    ipcMain.on('menu-export-note', () => mainWindow?.webContents.send('menu-export-note'))
+  })
 })
 
 app.on('window-all-closed', () => {
   log('INFO', 'All windows closed')
   if (fileWatcher) fileWatcher.close()
+  cleanupLog()
   if (process.platform !== 'darwin') app.quit()
 })
 

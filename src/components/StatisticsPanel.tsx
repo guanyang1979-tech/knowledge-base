@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
 
 interface StatisticsPanelProps {
@@ -35,7 +35,7 @@ export default function StatisticsPanel({ onClose }: StatisticsPanelProps) {
     notes.forEach(note => {
       if (note.path.includes('Obsidian同步') || note.path.includes('obsidian')) {
         sourceStats.obsidian++
-      } else if (note.path.includes('文档库') || note.content.includes('source_file:')) {
+      } else if (note.path.includes('文档库') || note.content?.includes('source_file:')) {
         sourceStats.imported++
       } else {
         sourceStats.manual++
@@ -66,6 +66,37 @@ export default function StatisticsPanel({ onClose }: StatisticsPanelProps) {
       return diff < 30 * 24 * 60 * 60 * 1000
     }).length
 
+    // 按周统计创建趋势（最近 4 周）
+    const weeklyTrend: { week: string; count: number }[] = []
+    for (let i = 3; i >= 0; i--) {
+      const weekStart = new Date(now)
+      weekStart.setDate(weekStart.getDate() - (i * 7 + 6))
+      weekStart.setHours(0, 0, 0, 0)
+      const weekEnd = new Date(now)
+      weekEnd.setDate(weekEnd.getDate() - i * 7)
+      weekEnd.setHours(23, 59, 59, 999)
+
+      const count = notes.filter(n => {
+        const date = new Date(n.updatedAt)
+        return date >= weekStart && date <= weekEnd
+      }).length
+
+      weeklyTrend.push({
+        week: `第 ${4 - i} 周`,
+        count
+      })
+    }
+
+    // 总字数统计
+    const totalWords = notes.reduce((acc, note) => {
+      if (note.preview) {
+        const chineseChars = (note.preview.match(/[一-龥]/g) || []).length
+        const englishWords = (note.preview.match(/[a-zA-Z]+/g) || []).length
+        return acc + chineseChars + englishWords
+      }
+      return acc
+    }, 0)
+
     return {
       total: notes.length,
       categoryStats,
@@ -74,16 +105,27 @@ export default function StatisticsPanel({ onClose }: StatisticsPanelProps) {
       topTags,
       topCategories,
       thisWeek,
-      thisMonth
+      thisMonth,
+      weeklyTrend,
+      totalWords
     }
   }, [notes])
 
   // 最大分类数（用于进度条计算）
   const maxCategoryCount = Math.max(...Object.values(stats.categoryStats), 1)
 
+  // ESC 键关闭
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* 头部 */}
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">知识库统计</h2>
@@ -119,6 +161,24 @@ export default function StatisticsPanel({ onClose }: StatisticsPanelProps) {
             </div>
           </div>
 
+          {/* 总字数 */}
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">总字数</div>
+                <div className="text-2xl font-bold text-gray-800 dark:text-gray-200">
+                  {stats.totalWords.toLocaleString()}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-600 dark:text-gray-400">平均字数/篇</div>
+                <div className="text-2xl font-bold text-gray-800 dark:text-gray-200">
+                  {stats.total > 0 ? Math.round(stats.totalWords / stats.total).toLocaleString() : 0}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* 来源分布 */}
           <div>
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">知识来源</h3>
@@ -143,6 +203,29 @@ export default function StatisticsPanel({ onClose }: StatisticsPanelProps) {
                   <span className="text-sm text-gray-600 dark:text-gray-400">手动创建</span>
                 </div>
                 <div className="text-lg font-semibold text-gray-800 dark:text-gray-200">{stats.sourceStats.manual}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 更新趋势 */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">更新趋势（最近 4 周）</h3>
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <div className="flex items-end gap-2 h-32">
+                {stats.weeklyTrend.map((week, index) => {
+                  const maxCount = Math.max(...stats.weeklyTrend.map(w => w.count), 1)
+                  const height = (week.count / maxCount) * 100
+                  return (
+                    <div key={index} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{week.count}</span>
+                      <div
+                        className="w-full bg-primary-500 rounded-t"
+                        style={{ height: `${Math.max(height, 4)}%` }}
+                      />
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{week.week}</span>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -188,6 +271,16 @@ export default function StatisticsPanel({ onClose }: StatisticsPanelProps) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* 底部 */}
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            关闭
+          </button>
         </div>
       </div>
     </div>

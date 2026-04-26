@@ -5,7 +5,8 @@ export interface Note {
   title: string
   category: string
   tags: string[]
-  content: string
+  content?: string
+  preview?: string
   updatedAt: string
 }
 

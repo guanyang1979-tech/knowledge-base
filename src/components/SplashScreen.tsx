@@ -21,16 +21,17 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
     }, 200)
 
     // 3秒后开始淡出
+    let exitTimer: ReturnType<typeof setTimeout>
     const timer = setTimeout(() => {
       setOpacity(0)
       setScale(1.02)
-      const exitTimer = setTimeout(onComplete, 800)
-      return () => clearTimeout(exitTimer)
+      exitTimer = setTimeout(onComplete, 800)
     }, 3000)
 
     return () => {
       clearInterval(interval)
       clearTimeout(timer)
+      clearTimeout(exitTimer)
     }
   }, [])
 

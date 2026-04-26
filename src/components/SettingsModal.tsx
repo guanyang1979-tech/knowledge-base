@@ -12,13 +12,18 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [apiKey, setApiKey] = useState(config.apiKey)
   const [syncDir, setSyncDir] = useState(config.syncDir)
   const [notesDir, setNotesDir] = useState(config.notesDir)
-  const [theme, setTheme] = useState(config.theme)
+  const [theme, setTheme] = useState<'light' | 'dark'>(config.theme)
   const [obsidianVaultPath, setObsidianVaultPath] = useState(config.obsidianVaultPath)
   const [obsidianAutoSync, setObsidianAutoSync] = useState(config.obsidianAutoSync)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
   const [obsidianValidating, setObsidianValidating] = useState(false)
   const [obsidianValid, setObsidianValid] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [excludeFolders, setExcludeFolders] = useState<string[]>(
+    config.obsidianExcludeFolders || ['.obsidian', 'node_modules', '.git']
+  )
+  const [newExcludeFolder, setNewExcludeFolder] = useState('')
 
   // 测试 API Key
   const handleTestApiKey = async () => {
@@ -94,44 +99,74 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
 
   // 保存设置
   const handleSave = async () => {
-    const newConfig = {
-      apiKey: apiKey.trim(),
-      syncDir,
-      notesDir,
-      theme: theme as 'light' | 'dark',
-      obsidianVaultPath,
-      obsidianAutoSync,
-      obsidianExcludeFolders: ['.obsidian', 'node_modules', '.git']
+    setSaving(true)
+    try {
+      const newConfig = {
+        apiKey: apiKey.trim(),
+        syncDir,
+        notesDir,
+        theme,
+        obsidianVaultPath,
+        obsidianAutoSync,
+        obsidianExcludeFolders: excludeFolders
+      }
+
+      await window.electronAPI.saveConfig(newConfig)
+      setConfig(newConfig)
+
+      // 初始化 AI
+      if (apiKey.trim()) {
+        initAnthropic(apiKey.trim())
+      }
+
+      // 刷新笔记
+      await refreshNotes()
+
+      // 启动文件监控
+      if (syncDir) {
+        await window.electronAPI.startWatch()
+      }
+
+      onClose()
+    } catch (error: any) {
+      alert(`保存设置失败: ${error.message}`)
+    } finally {
+      setSaving(false)
     }
-
-    await window.electronAPI.saveConfig(newConfig)
-    setConfig(newConfig)
-
-    // 初始化 AI
-    if (apiKey.trim()) {
-      initAnthropic(apiKey.trim())
-    }
-
-    // 刷新笔记
-    await refreshNotes()
-
-    // 启动文件监控
-    if (syncDir) {
-      await window.electronAPI.startWatch()
-    }
-
-    onClose()
   }
 
+  // 添加排除文件夹
+  const handleAddExcludeFolder = () => {
+    const folder = newExcludeFolder.trim()
+    if (folder && !excludeFolders.includes(folder)) {
+      setExcludeFolders([...excludeFolders, folder])
+      setNewExcludeFolder('')
+    }
+  }
+
+  // 移除排除文件夹
+  const handleRemoveExcludeFolder = (folder: string) => {
+    setExcludeFolders(excludeFolders.filter(f => f !== folder))
+  }
+
+  // ESC 键关闭
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) onClose()
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose, saving])
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg mx-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* 头部 */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">设置</h2>
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 dark:text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-400 rounded"
+            className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -140,7 +175,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         </div>
 
         {/* 内容 */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto flex-1">
           {/* Claude API 配置 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -306,12 +341,57 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             </label>
             <select
               value={theme}
-              onChange={(e) => setTheme(e.target.value)}
+              onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none"
             >
               <option value="light">浅色</option>
               <option value="dark">深色</option>
             </select>
+          </div>
+
+          {/* 排除文件夹 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              排除文件夹
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              这些文件夹中的笔记不会被导入
+            </p>
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                value={newExcludeFolder}
+                onChange={(e) => setNewExcludeFolder(e.target.value)}
+                placeholder="输入文件夹名称..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none"
+                onKeyDown={(e) => e.key === 'Enter' && handleAddExcludeFolder()}
+              />
+              <button
+                onClick={handleAddExcludeFolder}
+                disabled={!newExcludeFolder.trim()}
+                className="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+              >
+                添加
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {excludeFolders.map(folder => (
+                <span
+                  key={folder}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded"
+                >
+                  {folder}
+                  <button
+                    onClick={() => handleRemoveExcludeFolder(folder)}
+                    className="text-gray-400 hover:text-red-500"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -319,15 +399,27 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600 dark:bg-gray-700 rounded-lg"
+            disabled={saving}
+            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600 dark:bg-gray-700 rounded-lg disabled:opacity-50"
           >
             取消
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
           >
-            保存
+            {saving ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                保存中...
+              </>
+            ) : (
+              '保存'
+            )}
           </button>
         </div>
       </div>

@@ -1,21 +1,54 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import MDEditor from '@uiw/react-md-editor'
 import { useAppStore } from '../stores/appStore'
 import { suggestTags } from '../services/aiService'
 
 export default function NoteEditor() {
-  const { currentNote, setCurrentNote, refreshNotes, config } = useAppStore()
+  const { currentNote, refreshNotes, config, setCurrentNote } = useAppStore()
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [showAI, setShowAI] = useState(false)
+  const [previewMode, setPreviewMode] = useState<'edit' | 'live'>('live')
+  const [frontmatter, setFrontmatter] = useState<Record<string, string>>({})
+  const [tagSuggestionLoading, setTagSuggestionLoading] = useState(false)
+  const contentRef = useRef(content)
+  const lastSavedContentRef = useRef('')
+
+  // 更新 contentRef
+  useEffect(() => {
+    contentRef.current = content
+  }, [content])
+
+  // 剥离 frontmatter
+  const stripFrontmatter = (text: string) => text.replace(/^---[\s\S]*?---\n?/, '')
+
+  // 解析 frontmatter
+  useEffect(() => {
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/)
+    if (fmMatch) {
+      const lines = fmMatch[1].split('\n')
+      const parsed: Record<string, string> = {}
+      for (const line of lines) {
+        const idx = line.indexOf(':')
+        if (idx > 0) {
+          parsed[line.slice(0, idx).trim()] = line.slice(idx + 1).trim()
+        }
+      }
+      setFrontmatter(parsed)
+    } else {
+      setFrontmatter({})
+    }
+  }, [content])
 
   // 当 currentNote 变化时更新 content
   useEffect(() => {
     if (currentNote) {
-      setContent(currentNote.content)
+      setContent(currentNote.content || '')
+      lastSavedContentRef.current = currentNote.content || ''
     } else {
       setContent('')
+      lastSavedContentRef.current = ''
     }
   }, [currentNote?.path])
 
@@ -24,29 +57,30 @@ export default function NoteEditor() {
     if (!currentNote || !currentNote.path || saving) return
 
     setSaving(true)
-    const result = await window.electronAPI.saveNote(currentNote.path, content)
+    const result = await window.electronAPI.saveNote(currentNote.path, contentRef.current)
 
     if (result.success) {
       setLastSaved(new Date())
+      lastSavedContentRef.current = contentRef.current
       // 更新笔记列表
       await refreshNotes()
     }
 
     setSaving(false)
-  }, [currentNote, content, saving, refreshNotes])
+  }, [currentNote, saving, refreshNotes])
 
   // 内容变化时自动保存（防抖）
   useEffect(() => {
     if (!currentNote || !currentNote.path) return
 
     const timer = setTimeout(() => {
-      if (content !== currentNote.content) {
+      if (contentRef.current !== lastSavedContentRef.current) {
         handleSave()
       }
     }, 1000)
 
     return () => clearTimeout(timer)
-  }, [content, currentNote])
+  }, [content, currentNote, handleSave])
 
   // 键盘快捷键
   useEffect(() => {
@@ -62,49 +96,54 @@ export default function NoteEditor() {
   }, [handleSave])
 
   // 建议标签
-  const handleSuggestTags = async () => {
+  const handleSuggestTags = useCallback(async () => {
     if (!config.apiKey) {
       alert('请先在设置中配置 Claude API Key')
       return
     }
 
-    const result = await suggestTags(content)
-    if (result.success && result.tags) {
-      // 解析现有标签
-      const existingTagsMatch = content.match(/tags:\s*\[([^\]]*)\]/)
-      let existingTags: string[] = []
-      if (existingTagsMatch) {
-        existingTags = existingTagsMatch[1].split(',').map(t => t.trim()).filter(t => t)
-      }
-
-      // 合并新标签
-      const newTags = [...new Set([...existingTags, ...result.tags])]
-
-      // 更新 content
-      if (existingTagsMatch) {
-        const newContent = content.replace(
-          /tags:\s*\[([^\]]*)\]/,
-          `tags: [${newTags.join(', ')}]`
-        )
-        setContent(newContent)
-      } else {
-        // 在 frontmatter 中添加 tags
-        const fmEnd = content.indexOf('---', 3)
-        if (fmEnd !== -1) {
-          const newContent = content.slice(0, fmEnd + 3) +
-            `\ntags: [${newTags.join(', ')}]` +
-            content.slice(fmEnd + 3)
-          setContent(newContent)
+    setTagSuggestionLoading(true)
+    try {
+      const result = await suggestTags(contentRef.current)
+      if (result.success && result.tags) {
+        // 解析现有标签
+        const existingTagsMatch = contentRef.current.match(/tags:\s*\[([^\]]*)\]/)
+        let existingTags: string[] = []
+        if (existingTagsMatch) {
+          existingTags = existingTagsMatch[1].split(',').map(t => t.trim()).filter(t => t)
         }
-      }
-    }
-  }
 
-  // 提取标题
-  const getTitleFromContent = (content: string): string => {
-    const match = content.match(/^#\s+(.+)$/m)
-    return match ? match[1].trim() : '无标题'
-  }
+        // 合并新标签
+        const newTags = [...new Set([...existingTags, ...result.tags])]
+
+        // 更新 content
+        if (existingTagsMatch) {
+          const newContent = contentRef.current.replace(
+            /tags:\s*\[([^\]]*)\]/,
+            `tags: [${newTags.join(', ')}]`
+          )
+          setContent(newContent)
+        } else {
+          // 在 frontmatter 中添加 tags
+          const fmEnd = contentRef.current.indexOf('---', 3)
+          if (fmEnd !== -1) {
+            const newContent = contentRef.current.slice(0, fmEnd + 3) +
+              `\ntags: [${newTags.join(', ')}]` +
+              contentRef.current.slice(fmEnd + 3)
+            setContent(newContent)
+          } else {
+            alert('笔记没有 frontmatter，无法添加标签。请先添加 frontmatter（以 --- 开头和结尾）。')
+          }
+        }
+      } else {
+        alert(`标签建议失败: ${result.error || '未知错误'}`)
+      }
+    } catch (error: any) {
+      alert(`标签建议失败: ${error.message}`)
+    } finally {
+      setTagSuggestionLoading(false)
+    }
+  }, [config.apiKey])
 
   if (!currentNote) {
     return (
@@ -123,70 +162,113 @@ export default function NoteEditor() {
   return (
     <div className="h-full flex flex-col" data-color-mode={config.theme}>
       {/* 工具栏 */}
-      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800">
-        <div className="flex items-center gap-2">
-          <h2 className="font-medium text-gray-800 dark:text-gray-200">
-            {currentNote.title || '新笔记'}
-          </h2>
-          {saving && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">保存中...</span>
-          )}
-          {lastSaved && !saving && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">
-              已保存 {lastSaved.toLocaleTimeString('zh-CN')}
-            </span>
-          )}
+      <div className="border-b border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#0d0d14] flex-shrink-0">
+        {/* 第一行：返回 + 标题 + 操作按钮 */}
+        <div className="px-3 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => setCurrentNote(null)}
+              className="p-1 text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded transition-colors flex-shrink-0"
+              title="返回"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <h2 className="text-sm font-medium text-gray-800 dark:text-white/80 truncate">
+              {currentNote.title || '新笔记'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => setPreviewMode(previewMode === 'live' ? 'edit' : 'live')}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                previewMode === 'live'
+                  ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                  : 'text-gray-500 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/[0.06]'
+              }`}
+              title={previewMode === 'live' ? '纯编辑模式' : '实时预览模式'}
+            >
+              {previewMode === 'live' ? '预览' : '编辑'}
+            </button>
+            <button
+              onClick={handleSuggestTags}
+              className="px-2 py-1 text-xs text-gray-500 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded transition-colors"
+              title="AI 建议标签"
+              disabled={!config.apiKey || tagSuggestionLoading}
+            >
+              {tagSuggestionLoading ? '...' : '标签'}
+            </button>
+            <button
+              onClick={() => setShowAI(!showAI)}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                showAI
+                  ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                  : 'text-gray-500 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/[0.06]'
+              }`}
+              title="AI 助手"
+              disabled={!config.apiKey}
+            >
+              AI
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-2 py-1 text-xs bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors"
+            >
+              保存
+            </button>
+          </div>
         </div>
-
-        <div className="flex items-center gap-1">
-          {/* AI 功能按钮 */}
-          <button
-            onClick={handleSuggestTags}
-            className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg flex items-center gap-1"
-            title="AI 建议标签"
-            disabled={!config.apiKey}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-            </svg>
-            标签
-          </button>
-
-          <button
-            onClick={() => setShowAI(!showAI)}
-            className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-1 ${
-              showAI
-                ? 'bg-primary-100 text-primary-700'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-            }`}
-            title="AI 助手"
-            disabled={!config.apiKey}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            AI
-          </button>
-
-          <button
-            onClick={handleSave}
-            className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-1"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-            </svg>
-            保存
-          </button>
-        </div>
+        {/* 第二行：元信息 */}
+        {(frontmatter.synced_at || frontmatter.source_path || saving || lastSaved) && (
+          <div className="px-3 pb-1.5 flex items-center gap-3 text-[11px] text-gray-400 dark:text-white/20">
+            {frontmatter.synced_at && (
+              <span>同步于 {new Date(frontmatter.synced_at).toLocaleString('zh-CN')}</span>
+            )}
+            {frontmatter.source_path && (
+              <span className="truncate">来源: {frontmatter.source_path}</span>
+            )}
+            {saving && <span className="text-primary-500">保存中...</span>}
+            {!saving && lastSaved && (
+              <span>已保存 {lastSaved.toLocaleTimeString('zh-CN')}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Markdown 编辑器 */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden
+        [&_.wmde-markdown]:!bg-transparent
+        [&_.wmde-markdown]:!text-gray-700 dark:[&_.wmde-markdown]:!text-white/70
+        [&_.wmde-markdown_h1]:!text-gray-900 dark:[&_.wmde-markdown_h1]:!text-white/90
+        [&_.wmde-markdown_h2]:!text-gray-900 dark:[&_.wmde-markdown_h2]:!text-white/90
+        [&_.wmde-markdown_h3]:!text-gray-900 dark:[&_.wmde-markdown_h3]:!text-white/85
+        [&_.wmde-markdown_h4]:!text-gray-900 dark:[&_.wmde-markdown_h4]:!text-white/80
+        [&_.wmde-markdown_strong]:!text-gray-900 dark:[&_.wmde-markdown_strong]:!text-white/85
+        [&_.wmde-markdown_blockquote]:!text-gray-500 dark:[&_.wmde-markdown_blockquote]:!text-white/40
+        [&_.wmde-markdown_code]:!bg-gray-100 dark:[&_.wmde-markdown_code]:!bg-white/[0.06]
+        [&_.wmde-markdown_code]:!text-gray-800 dark:[&_.wmde-markdown_code]:!text-white/70
+        [&_.w-md-editor-toolbar]:!bg-white dark:[&_.w-md-editor-toolbar]:!bg-[#0d0d14]
+        [&_.w-md-editor-toolbar]:!border-b [&_.w-md-editor-toolbar]:!border-gray-200 dark:[&_.w-md-editor-toolbar]:!border-white/[0.06]
+        [&_.w-md-editor-toolbar_li_button]:!text-gray-400 dark:[&_.w-md-editor-toolbar_li_button]:!text-white/30
+        [&_.w-md-editor-toolbar_li_button:hover]:!text-gray-600 dark:[&_.w-md-editor-toolbar_li_button:hover]:!text-white/60
+        [&_.w-md-editor-toolbar_li_button.active]:!text-primary-600 dark:[&_.w-md-editor-toolbar_li_button.active]:!text-primary-400
+        [&_.w-md-editor-content]:!bg-white dark:[&_.w-md-editor-content]:!bg-[#0a0a0f]
+        [&_.w-md-editor]:!bg-white dark:[&_.w-md-editor]:!bg-[#0d0d14]
+        [&_.w-md-editor]:!border-gray-200 dark:[&_.w-md-editor]:!border-white/[0.06]
+        [&_.w-md-editor textarea]:!bg-white dark:[&_.w-md-editor textarea]:!bg-[#0a0a0f]
+        [&_.w-md-editor textarea]:!text-gray-800 dark:[&_.w-md-editor textarea]:!text-white/70
+      ">
         <MDEditor
-          value={content}
-          onChange={(val) => setContent(val || '')}
+          value={stripFrontmatter(content)}
+          onChange={(val) => {
+            // 编辑时保留原始 frontmatter
+            const fmMatch = content.match(/^(---[\s\S]*?---\n?)/)
+            const fm = fmMatch ? fmMatch[1] : ''
+            setContent(fm + (val || ''))
+          }}
           height="100%"
-          preview="edit"
+          preview={previewMode}
           enableScroll={true}
           textareaProps={{
             placeholder: '开始编写你的笔记...'

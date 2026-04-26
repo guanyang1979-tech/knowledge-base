@@ -17,6 +17,11 @@ const electronAPI = {
 
   // 分类
   getCategories: () => ipcRenderer.invoke('get-categories'),
+  getAllCategories: () => ipcRenderer.invoke('get-all-categories'),
+  renameCategory: (oldName: string, newName: string) => ipcRenderer.invoke('rename-category', oldName, newName),
+  toggleCategoryHidden: (categoryName: string) => ipcRenderer.invoke('toggle-category-hidden', categoryName),
+  getHiddenCategories: () => ipcRenderer.invoke('get-hidden-categories'),
+  checkCategoryExists: (categoryName: string) => ipcRenderer.invoke('check-category-exists', categoryName),
 
   // 模板
   getTemplates: () => ipcRenderer.invoke('get-templates'),
@@ -54,12 +59,34 @@ const electronAPI = {
   // 事件监听
   onFileChanged: (callback: (path: string) => void) => {
     ipcRenderer.on('file-changed', (_, path) => callback(path))
+    return () => { ipcRenderer.removeAllListeners('file-changed') }
   },
   onFileAdded: (callback: (path: string) => void) => {
     ipcRenderer.on('file-added', (_, path) => callback(path))
+    return () => { ipcRenderer.removeAllListeners('file-added') }
   },
   onFileRemoved: (callback: (path: string) => void) => {
     ipcRenderer.on('file-removed', (_, path) => callback(path))
+    return () => { ipcRenderer.removeAllListeners('file-removed') }
+  },
+  removeAllListeners: () => {
+    ipcRenderer.removeAllListeners('file-changed')
+    ipcRenderer.removeAllListeners('file-added')
+    ipcRenderer.removeAllListeners('file-removed')
+  },
+
+  // 菜单事件
+  onMenuFocusSearch: (callback: () => void) => {
+    ipcRenderer.on('menu-focus-search', () => callback())
+    return () => { ipcRenderer.removeAllListeners('menu-focus-search') }
+  },
+  onMenuToggleSidebar: (callback: () => void) => {
+    ipcRenderer.on('menu-toggle-sidebar', () => callback())
+    return () => { ipcRenderer.removeAllListeners('menu-toggle-sidebar') }
+  },
+  onMenuExportNote: (callback: () => void) => {
+    ipcRenderer.on('menu-export-note', () => callback())
+    return () => { ipcRenderer.removeAllListeners('menu-export-note') }
   }
 }
 

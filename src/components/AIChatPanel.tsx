@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAppStore } from '../stores/appStore'
 import { chatWithAI, askQuestion, summarizeContent, polishContent } from '../services/aiService'
+
+const MAX_MESSAGES = 50
 
 export default function AIChatPanel() {
   const {
@@ -16,11 +18,21 @@ export default function AIChatPanel() {
   const [input, setInput] = useState('')
   const [mode, setMode] = useState<'chat' | 'ask' | 'summarize' | 'polish'>('chat')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // 取消请求
+  const handleCancel = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      setAiLoading(false)
+    }
+  }, [setAiLoading])
 
   // 发送消息
   const handleSend = async () => {
@@ -30,6 +42,17 @@ export default function AIChatPanel() {
     setInput('')
     setAiLoading(true)
 
+    // 检查消息数量限制
+    if (messages.length >= MAX_MESSAGES) {
+      addMessage({
+        role: 'assistant',
+        content: `提示：对话已达到 ${MAX_MESSAGES} 条消息上限，请开始新对话。`,
+        timestamp: Date.now()
+      })
+      setAiLoading(false)
+      return
+    }
+
     // 添加用户消息
     addMessage({
       role: 'user',
@@ -37,18 +60,21 @@ export default function AIChatPanel() {
       timestamp: Date.now()
     })
 
+    // 创建新的 AbortController
+    abortControllerRef.current = new AbortController()
+
     try {
-      let response
+      let response: { success: boolean; content?: string; error?: string }
 
       if (mode === 'ask' && currentNote) {
         // 知识问答模式
-        response = await askQuestion(currentNote.content, userMessage)
+        response = await askQuestion(currentNote.content || '', userMessage)
       } else if (mode === 'summarize' && currentNote) {
         // 摘要模式
-        response = await summarizeContent(currentNote.content)
+        response = await summarizeContent(currentNote.content || '')
       } else if (mode === 'polish' && currentNote) {
         // 润色模式
-        response = await polishContent(currentNote.content)
+        response = await polishContent(currentNote.content || '')
       } else {
         // 对话模式
         response = await chatWithAI(messages, userMessage, currentNote?.content)
@@ -68,14 +94,17 @@ export default function AIChatPanel() {
         })
       }
     } catch (error: any) {
-      addMessage({
-        role: 'assistant',
-        content: `错误: ${error.message}`,
-        timestamp: Date.now()
-      })
+      if (error.name !== 'AbortError') {
+        addMessage({
+          role: 'assistant',
+          content: `错误: ${error.message}`,
+          timestamp: Date.now()
+        })
+      }
+    } finally {
+      abortControllerRef.current = null
+      setAiLoading(false)
     }
-
-    setAiLoading(false)
   }
 
   // 键盘提交
@@ -126,7 +155,8 @@ export default function AIChatPanel() {
             <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
-            <p className="text-sm">请先在设置中配置 Claude API Key</p>
+            <p className="text-sm mb-2">请先在设置中配置 Claude API Key</p>
+            <p className="text-xs text-gray-400">点击右上角齿轮图标打开设置</p>
           </div>
         </div>
       </div>
@@ -198,9 +228,9 @@ export default function AIChatPanel() {
 
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message, index) => (
+        {messages.map((message) => (
           <div
-            key={index}
+            key={message.timestamp}
             className={`${
               message.role === 'user' ? 'ml-8' : 'mr-4'
             }`}
@@ -248,15 +278,26 @@ export default function AIChatPanel() {
             rows={2}
             disabled={aiLoading}
           />
-          <button
-            onClick={handleSend}
-            disabled={aiLoading || (!input.trim() && mode !== 'summarize' && mode !== 'polish')}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-          </button>
+          {aiLoading ? (
+            <button
+              onClick={handleCancel}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() && mode !== 'summarize' && mode !== 'polish'}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

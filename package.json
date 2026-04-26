@@ -1,9 +1,9 @@
 {
   "name": "knowledge-base",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "author": "12792",
   "description": "个人知识库 AI 助手系统",
-  "main": "dist-electron/main.cjs",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "dev:electron": "node scripts/dev.mjs",
@@ -55,7 +55,11 @@
       "dist-electron/**/*"
     ],
     "extraMetadata": {
-      "main": "dist-electron/main.cjs"
+      "main": "dist-electron/main.js"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "sign": false
     },
     "nsis": {
       "oneClick": false,

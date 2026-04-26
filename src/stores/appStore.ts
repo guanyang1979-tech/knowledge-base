@@ -18,6 +18,15 @@ interface AppState {
   searchQuery: string
   selectedCategory: string | null
 
+  // 面板宽度
+  sidebarWidth: number
+  noteListWidth: number
+  aiPanelWidth: number
+
+  // 排序
+  sortField: 'updatedAt' | 'title' | 'category'
+  sortOrder: 'asc' | 'desc'
+
   // AI 对话
   messages: Message[]
   aiLoading: boolean
@@ -47,6 +56,11 @@ interface AppState {
   setSidebarOpen: (open: boolean) => void
   setSearchQuery: (query: string) => void
   setSelectedCategory: (category: string | null) => void
+  setSidebarWidth: (w: number) => void
+  setNoteListWidth: (w: number) => void
+  setAiPanelWidth: (w: number) => void
+  setSortField: (f: 'updatedAt' | 'title' | 'category') => void
+  toggleSortOrder: () => void
   addMessage: (message: Message) => void
   clearMessages: () => void
   setAiLoading: (loading: boolean) => void
@@ -78,6 +92,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarOpen: true,
   searchQuery: '',
   selectedCategory: null,
+  sidebarWidth: 224,
+  noteListWidth: 300,
+  aiPanelWidth: 288,
+  sortField: 'updatedAt',
+  sortOrder: 'desc',
   messages: [],
   aiLoading: false,
   settingsOpen: false,
@@ -98,6 +117,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setSelectedCategory: (category) => set({ selectedCategory: category }),
+  setSidebarWidth: (w) => set({ sidebarWidth: w }),
+  setNoteListWidth: (w) => set({ noteListWidth: w }),
+  setAiPanelWidth: (w) => set({ aiPanelWidth: w }),
+  setSortField: (f) => set((state) => ({
+    sortField: f,
+    sortOrder: state.sortField === f ? (state.sortOrder === 'asc' ? 'desc' : 'asc') : 'desc'
+  })),
+  toggleSortOrder: () => set((state) => ({ sortOrder: state.sortOrder === 'asc' ? 'desc' : 'asc' })),
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, message]
   })),

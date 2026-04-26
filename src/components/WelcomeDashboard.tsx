@@ -1,12 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useAppStore } from '../stores/appStore'
 
 interface WelcomeDashboardProps {
   onSelectNote: (notePath: string) => void
+  onCreateNote: () => void
 }
 
-export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps) {
-  const { notes, setImportOpen, setExportOpen, setStatisticsOpen, setTrashOpen, refreshNotes } = useAppStore()
+export default function WelcomeDashboard({ onSelectNote, onCreateNote }: WelcomeDashboardProps) {
+  const { notes, config, setImportOpen, setExportOpen, setStatisticsOpen, setTrashOpen, refreshNotes } = useAppStore()
+  const [syncing, setSyncing] = useState(false)
 
   const stats = useMemo(() => {
     const total = notes.length
@@ -37,12 +39,41 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
     return d.toLocaleDateString('zh-CN')
   }
 
+  const handleSync = async () => {
+    if (!config.obsidianVaultPath) {
+      alert('请先在设置中配置 Obsidian Vault 路径')
+      return
+    }
+    if (!config.notesDir) {
+      alert('请先在设置中配置笔记存储目录')
+      return
+    }
+    setSyncing(true)
+    try {
+      const result = await window.electronAPI.syncObsidianNotes(
+        config.obsidianVaultPath,
+        config.notesDir,
+        config.obsidianExcludeFolders || []
+      )
+      if (result.success) {
+        await refreshNotes()
+        alert(`同步完成！共同步 ${result.syncedCount} 篇笔记`)
+      } else {
+        alert(`同步失败: ${result.error}`)
+      }
+    } catch (error: any) {
+      alert(`同步失败: ${error.message}`)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const quickActions = [
-    { icon: 'plus', label: '新建笔记', action: () => document.querySelector('[title="新建笔记"]')?.click() },
+    { icon: 'plus', label: '新建笔记', action: onCreateNote },
     { icon: 'upload', label: '导入文档', action: () => setImportOpen(true) },
     { icon: 'download', label: '导出笔记', action: () => setExportOpen(true) },
     { icon: 'chart', label: '统计分析', action: () => setStatisticsOpen(true) },
-    { icon: 'sync', label: '同步笔记', action: () => refreshNotes() },
+    { icon: 'sync', label: syncing ? '同步中...' : '同步笔记', action: handleSync, disabled: syncing },
     { icon: 'trash', label: '回收站', action: () => setTrashOpen(true) },
   ]
 
@@ -56,9 +87,9 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-gradient-to-b from-[#0a0a0f] via-[#0d0d14] to-[#08080d]">
-      {/* Subtle grid overlay */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.02]" style={{
+    <div className="h-full overflow-y-auto bg-gradient-to-b from-gray-50 via-white to-gray-50 dark:from-[#0a0a0f] dark:via-[#0d0d14] dark:to-[#08080d]">
+      {/* Subtle grid overlay (dark mode only) */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.02] dark:opacity-[0.02] opacity-0" style={{
         backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
           linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
         backgroundSize: '60px 60px',
@@ -67,10 +98,10 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
       <div className="relative p-8">
         {/* Welcome section */}
         <div className="mb-10">
-          <h1 className="text-[28px] font-light tracking-wide text-white/90 mb-2">
+          <h1 className="text-[28px] font-light tracking-wide text-gray-900 dark:text-white/90 mb-2">
             欢迎使用知识库助手
           </h1>
-          <p className="text-sm text-white/30 tracking-wider">
+          <p className="text-sm text-gray-500 dark:text-white/30 tracking-wider">
             管理你的知识，让 AI 助你一臂之力
           </p>
         </div>
@@ -83,13 +114,13 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
             { label: '标签', value: stats.tags },
             { label: '本周更新', value: stats.thisWeek },
           ].map(stat => (
-            <div key={stat.label} className="relative rounded-lg border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm p-5 group hover:border-white/[0.12] transition-all duration-300">
+            <div key={stat.label} className="relative rounded-lg border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] backdrop-blur-sm p-5 group hover:border-gray-300 dark:hover:border-white/[0.12] transition-all duration-300">
               <div className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, transparent 60%)',
               }} />
               <div className="relative">
-                <div className="text-[28px] font-extralight text-white/80">{stat.value}</div>
-                <div className="text-xs text-white/25 mt-1 tracking-wide">{stat.label}</div>
+                <div className="text-[28px] font-extralight text-gray-900 dark:text-white/80">{stat.value}</div>
+                <div className="text-xs text-gray-500 dark:text-white/25 mt-1 tracking-wide">{stat.label}</div>
               </div>
             </div>
           ))}
@@ -97,7 +128,7 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
 
         {/* Quick actions */}
         <div className="mb-10">
-          <h2 className="text-xs text-white/20 uppercase tracking-[0.2em] mb-5">
+          <h2 className="text-xs text-gray-400 dark:text-white/20 uppercase tracking-[0.2em] mb-5">
             快捷操作
           </h2>
           <div className="grid grid-cols-3 gap-3">
@@ -105,12 +136,13 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
               <button
                 key={action.label}
                 onClick={action.action}
-                className="flex items-center gap-3 px-4 py-3.5 rounded-lg border border-white/[0.06] bg-white/[0.015] hover:border-white/[0.15] hover:bg-white/[0.04] active:bg-white/[0.06] transition-all duration-200 group"
+                disabled={'disabled' in action && action.disabled}
+                className="flex items-center gap-3 px-4 py-3.5 rounded-lg border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.015] hover:border-gray-300 dark:hover:border-white/[0.15] hover:bg-gray-50 dark:hover:bg-white/[0.04] active:bg-gray-100 dark:active:bg-white/[0.06] transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <svg className="w-4 h-4 text-white/30 group-hover:text-white/60 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 text-gray-400 dark:text-white/30 group-hover:text-gray-600 dark:group-hover:text-white/60 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   {actionIcons[action.icon]}
                 </svg>
-                <span className="text-sm text-white/50 group-hover:text-white/80 transition-colors">{action.label}</span>
+                <span className="text-sm text-gray-600 dark:text-white/50 group-hover:text-gray-900 dark:group-hover:text-white/80 transition-colors">{action.label}</span>
               </button>
             ))}
           </div>
@@ -118,12 +150,12 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
 
         {/* Recent notes */}
         <div className="mb-10">
-          <h2 className="text-xs text-white/20 uppercase tracking-[0.2em] mb-5">
+          <h2 className="text-xs text-gray-400 dark:text-white/20 uppercase tracking-[0.2em] mb-5">
             最近笔记
           </h2>
           {recentNotes.length === 0 ? (
-            <div className="text-center py-16 border border-white/[0.04] rounded-lg bg-white/[0.01]">
-              <div className="text-white/15 text-sm">还没有笔记，点击上方"新建笔记"开始吧</div>
+            <div className="text-center py-16 border border-gray-200 dark:border-white/[0.04] rounded-lg bg-gray-50 dark:bg-white/[0.01]">
+              <div className="text-gray-400 dark:text-white/15 text-sm">还没有笔记，点击上方"新建笔记"开始吧</div>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
@@ -131,18 +163,18 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
                 <button
                   key={note.id}
                   onClick={() => onSelectNote(note.path)}
-                  className="text-left px-4 py-4 rounded-lg border border-white/[0.06] bg-white/[0.015] hover:border-white/[0.15] hover:bg-white/[0.04] transition-all duration-200 group"
+                  className="text-left px-4 py-4 rounded-lg border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.015] hover:border-gray-300 dark:hover:border-white/[0.15] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-all duration-200 group"
                 >
-                  <h3 className="text-sm text-white/70 group-hover:text-white/90 transition-colors truncate">
+                  <h3 className="text-sm text-gray-800 dark:text-white/70 group-hover:text-gray-900 dark:group-hover:text-white/90 transition-colors truncate">
                     {note.title}
                   </h3>
-                  <p className="text-xs text-white/20 mt-1.5">
+                  <p className="text-xs text-gray-500 dark:text-white/20 mt-1.5">
                     {note.category} · {formatDate(note.updatedAt)}
                   </p>
                   {note.tags.length > 0 && (
                     <div className="flex gap-1.5 mt-2.5 flex-wrap">
                       {note.tags.slice(0, 3).map(tag => (
-                        <span key={tag} className="px-2 py-0.5 text-[10px] border border-white/[0.08] text-white/25 rounded">
+                        <span key={tag} className="px-2 py-0.5 text-[10px] border border-gray-200 dark:border-white/[0.08] text-gray-500 dark:text-white/25 rounded">
                           {tag}
                         </span>
                       ))}
@@ -155,9 +187,9 @@ export default function WelcomeDashboard({ onSelectNote }: WelcomeDashboardProps
         </div>
 
         {/* Tips section */}
-        <div className="px-4 py-3 rounded-lg border border-white/[0.04] bg-white/[0.015]">
-          <h3 className="text-[11px] text-white/25 mb-2 tracking-wide">小贴士</h3>
-          <ul className="text-[11px] text-white/20 space-y-1">
+        <div className="px-4 py-3 rounded-lg border border-gray-200 dark:border-white/[0.04] bg-white dark:bg-white/[0.015]">
+          <h3 className="text-[11px] text-gray-400 dark:text-white/25 mb-2 tracking-wide">小贴士</h3>
+          <ul className="text-[11px] text-gray-400 dark:text-white/20 space-y-1">
             <li>• 点击右上角齿轮图标配置 Claude API Key 以启用 AI 功能</li>
             <li>• 设置 Obsidian Vault 路径可自动同步已有笔记</li>
             <li>• 支持导入 Word、Excel、PDF 等格式文档</li>
