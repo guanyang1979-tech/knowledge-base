@@ -241,6 +241,40 @@ function setupIpcHandlers() {
     saveConfig(config)
     return true
   })
+  ipcMain.handle('test-connection', async (_, testConfig: any) => {
+    try {
+      if (testConfig.provider === 'anthropic') {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default
+        const client = new Anthropic({ apiKey: testConfig.apiKey, maxRetries: 1 })
+        await client.messages.create({
+          model: testConfig.model || 'claude-sonnet-4-20250514',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Hi' }],
+        })
+      } else {
+        const url = `${testConfig.baseUrl.replace(/\/$/, '')}/chat/completions`
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${testConfig.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: testConfig.model,
+            messages: [{ role: 'user', content: 'Hi' }],
+            max_tokens: 10,
+          }),
+        })
+        if (!resp.ok) {
+          const err = await resp.text()
+          return { success: false, error: `API 请求失败 (${resp.status}): ${err}` }
+        }
+      }
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message || '连接失败' }
+    }
+  })
   ipcMain.handle('get-notes-dir', () => getNotesDir())
   ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory'] })

@@ -29,6 +29,7 @@ const electronAPI = {
 
   // 系统
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  testConnection: (config: any) => ipcRenderer.invoke('test-connection', config),
 
   // 文件监控
   startWatch: () => ipcRenderer.invoke('start-watch'),

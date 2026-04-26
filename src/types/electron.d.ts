@@ -27,6 +27,7 @@ export interface ElectronAPI {
 
   // 系统
   openExternal: (url: string) => Promise<void>
+  testConnection: (config: any) => Promise<{ success: boolean; error?: string }>
 
   // 文件监控
   startWatch: () => Promise<{ success: boolean; error?: string }>

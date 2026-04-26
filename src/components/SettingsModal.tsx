@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
-import { initAIConfig, testConnection } from '../services/aiService'
+import { initAIConfig } from '../services/aiService'
 import type { Config } from '../types'
 
 interface SettingsModalProps {
@@ -44,16 +44,13 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     setTestResult(null)
     setTestError('')
 
-    const testConfig: Config = {
-      ...config,
+    const result = await window.electronAPI.testConnection({
       provider,
       apiKey: apiKey.trim(),
       baseUrl,
       model,
       maxTokens,
-    }
-
-    const result = await testConnection(testConfig)
+    })
     setTestResult(result.success ? 'success' : 'error')
     if (!result.success) setTestError(result.error || '')
     setTesting(false)
