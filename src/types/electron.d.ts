@@ -85,7 +85,6 @@ export interface Config {
   apiKey: string
   baseUrl: string
   model: string
-  temperature: number
   maxTokens: number
   syncDir: string
   theme: 'light' | 'dark'

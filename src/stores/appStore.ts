@@ -89,7 +89,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     apiKey: '',
     baseUrl: '',
     model: '',
-    temperature: 0.7,
     maxTokens: 4096,
     syncDir: '',
     theme: 'light',

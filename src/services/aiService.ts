@@ -8,7 +8,6 @@ import type { AIRequest, AIResponse, Config, Message } from '../types'
 interface ChatParams {
   messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
   model: string
-  temperature: number
   maxTokens: number
   signal?: AbortSignal
 }
@@ -34,7 +33,7 @@ async function anthropicChat(params: ChatParams): Promise<string> {
   const message = await anthropicClient.messages.create({
     model: params.model,
     max_tokens: params.maxTokens,
-    temperature: params.temperature,
+
     system: systemMsg?.content,
     messages: otherMsgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   })
@@ -53,7 +52,7 @@ async function* anthropicStream(params: ChatParams): AsyncGenerator<string> {
   const stream = anthropicClient.messages.stream({
     model: params.model,
     max_tokens: params.maxTokens,
-    temperature: params.temperature,
+
     system: systemMsg?.content,
     messages: otherMsgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   })
@@ -74,7 +73,6 @@ async function openaiChat(params: ChatParams, baseUrl: string, apiKey: string): 
   const body = {
     model: params.model,
     messages: params.messages,
-    temperature: params.temperature,
     max_tokens: params.maxTokens,
     stream: false,
   }
@@ -103,7 +101,6 @@ async function* openaiStream(params: ChatParams, baseUrl: string, apiKey: string
   const body = {
     model: params.model,
     messages: params.messages,
-    temperature: params.temperature,
     max_tokens: params.maxTokens,
     stream: true,
   }
@@ -215,7 +212,7 @@ export async function testConnection(config: Config): Promise<{ success: boolean
       })
     } else {
       await openaiChat(
-        { messages: [{ role: 'user', content: 'Hi' }], model: config.model, temperature: 0, maxTokens: 10 },
+        { messages: [{ role: 'user', content: 'Hi' }], model: config.model, maxTokens: 10 },
         config.baseUrl,
         config.apiKey
       )
@@ -278,7 +275,6 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
         { role: 'user', content: userMessage },
       ],
       model: currentConfig.model,
-      temperature: currentConfig.temperature,
       maxTokens: currentConfig.maxTokens,
     })
 
@@ -336,7 +332,6 @@ export async function chatWithAI(messages: Message[], userInput: string, noteCon
         { role: 'user', content: context + userInput },
       ],
       model: currentConfig.model,
-      temperature: currentConfig.temperature,
       maxTokens: currentConfig.maxTokens,
     })
 
@@ -384,7 +379,6 @@ export async function* streamChatWithAI(options: StreamChatOptions): AsyncGenera
       { role: 'user', content: context + options.userInput },
     ],
     model: currentConfig.model,
-    temperature: currentConfig.temperature,
     maxTokens: currentConfig.maxTokens,
     signal: options.signal,
   })
@@ -405,7 +399,6 @@ export async function* streamCallAI(request: AIRequest): AsyncGenerator<string> 
       { role: 'user', content: userMessage },
     ],
     model: currentConfig.model,
-    temperature: currentConfig.temperature,
     maxTokens: currentConfig.maxTokens,
   })
 }

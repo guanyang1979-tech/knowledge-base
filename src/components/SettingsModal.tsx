@@ -7,18 +7,6 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-// 预设模型配置
-const PRESETS: { name: string; provider: Config['provider']; baseUrl: string; model: string }[] = [
-  { name: 'Anthropic (Claude)', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-20250514' },
-  { name: '小米 MiMo', provider: 'openai', baseUrl: 'https://api.xiaomi.com/v1', model: 'MiMo-v2.5' },
-  { name: 'DeepSeek', provider: 'openai', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
-  { name: '通义千问 (Qwen)', provider: 'openai', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  { name: '硅基流动', provider: 'openai', baseUrl: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-V3' },
-  { name: 'Moonshot (Kimi)', provider: 'openai', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
-  { name: '智谱 AI (GLM)', provider: 'openai', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
-  { name: '自定义', provider: 'openai', baseUrl: '', model: '' },
-]
-
 export default function SettingsModal({ onClose }: SettingsModalProps) {
   const { config, setConfig, refreshNotes } = useAppStore()
 
@@ -27,9 +15,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [apiKey, setApiKey] = useState(config.apiKey)
   const [baseUrl, setBaseUrl] = useState(config.baseUrl || '')
   const [model, setModel] = useState(config.model || '')
-  const [temperature, setTemperature] = useState(config.temperature ?? 0.7)
   const [maxTokens, setMaxTokens] = useState(config.maxTokens ?? 4096)
-  const [presetName, setPresetName] = useState('')
 
   // 其他配置
   const [syncDir, setSyncDir] = useState(config.syncDir)
@@ -48,17 +34,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   )
   const [newExcludeFolder, setNewExcludeFolder] = useState('')
 
-  // 选择预设
-  const handlePresetChange = (name: string) => {
-    setPresetName(name)
-    const preset = PRESETS.find(p => p.name === name)
-    if (preset) {
-      setProvider(preset.provider)
-      setBaseUrl(preset.baseUrl)
-      setModel(preset.model)
-    }
-  }
-
   // 测试连接
   const handleTest = async () => {
     if (!apiKey.trim()) {
@@ -75,7 +50,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
       apiKey: apiKey.trim(),
       baseUrl,
       model,
-      temperature,
       maxTokens,
     }
 
@@ -114,7 +88,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         apiKey: apiKey.trim(),
         baseUrl,
         model,
-        temperature,
         maxTokens,
         syncDir,
         notesDir,
@@ -178,26 +151,41 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               AI 模型配置
             </h3>
 
-            {/* 服务商预设 */}
+            {/* 协议类型 */}
             <div className="mb-3">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">服务商</label>
-              <select
-                value={presetName}
-                onChange={(e) => handlePresetChange(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none bg-white dark:bg-gray-700"
-              >
-                <option value="">-- 选择预设或自定义 --</option>
-                {PRESETS.map(p => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
-                ))}
-              </select>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">协议类型</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setProvider('openai')}
+                  className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                    provider === 'openai'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-400'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                  }`}
+                >
+                  OpenAI 兼容协议
+                </button>
+                <button
+                  onClick={() => setProvider('anthropic')}
+                  className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                    provider === 'anthropic'
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-400'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                  }`}
+                >
+                  Anthropic 协议
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                {provider === 'openai'
+                  ? 'DeepSeek / MiMo / Qwen / Kimi / GLM 等国内模型均使用此协议'
+                  : 'Claude 系列模型使用 Anthropic 专有协议'}
+              </p>
             </div>
 
             {/* API 地址 */}
             <div className="mb-3">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                API 地址 {provider === 'anthropic' ? '(Anthropic 协议)' : '(OpenAI 兼容协议)'}
-              </label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">API 地址</label>
               <input
                 type="text"
                 value={baseUrl}
@@ -247,33 +235,17 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               />
             </div>
 
-            {/* 温度 & 最大 Token */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  温度: {temperature.toFixed(1)}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={temperature}
-                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">最大 Token</label>
-                <input
-                  type="number"
-                  value={maxTokens}
-                  onChange={(e) => setMaxTokens(parseInt(e.target.value) || 4096)}
-                  min={256}
-                  max={128000}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none bg-white dark:bg-gray-700"
-                />
-              </div>
+            {/* 最大 Token */}
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">最大 Token</label>
+              <input
+                type="number"
+                value={maxTokens}
+                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 4096)}
+                min={256}
+                max={128000}
+                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none bg-white dark:bg-gray-700"
+              />
             </div>
           </div>
 

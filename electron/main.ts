@@ -28,7 +28,6 @@ const defaultConfig = {
   apiKey: '',
   baseUrl: '',
   model: '',
-  temperature: 0.7,
   maxTokens: 4096,
   syncDir: '',
   theme: 'light',
