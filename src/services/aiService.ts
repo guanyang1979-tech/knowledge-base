@@ -25,7 +25,57 @@ async function streamViaIPC(
 ): Promise<string> {
   if (!currentConfig?.apiKey) throw new Error('请先在设置中配置 AI 模型')
 
-  const requestId = await window.electronAPI.aiChat({
+  // 先设置监听，再发起调用，避免丢失事件
+  let acc = ''
+  let done = false
+  let resolvePromise: (value: string) => void
+  let rejectPromise: (reason: any) => void
+
+  const removeToken = window.electronAPI.onAiStreamToken((data) => {
+    if (data.requestId === currentRequestId) {
+      acc += data.token
+      onToken(data.token)
+    }
+  })
+
+  const removeDone = window.electronAPI.onAiStreamDone((data) => {
+    if (data.requestId === currentRequestId) {
+      done = true
+      cleanup()
+      resolvePromise(acc)
+    }
+  })
+
+  const removeError = window.electronAPI.onAiStreamError((data) => {
+    if (data.requestId === currentRequestId) {
+      done = true
+      cleanup()
+      rejectPromise(new Error(data.error))
+    }
+  })
+
+  function cleanup() {
+    removeToken()
+    removeDone()
+    removeError()
+  }
+
+  signal?.addEventListener('abort', () => {
+    if (!done) {
+      cleanup()
+      rejectPromise(new DOMException('Aborted', 'AbortError'))
+    }
+  })
+
+  let currentRequestId = ''
+
+  const promise = new Promise<string>((resolve, reject) => {
+    resolvePromise = resolve
+    rejectPromise = reject
+  })
+
+  // 发起 IPC 调用
+  currentRequestId = await window.electronAPI.aiChat({
     provider: currentConfig.provider,
     baseUrl: currentConfig.baseUrl,
     apiKey: currentConfig.apiKey,
@@ -33,47 +83,7 @@ async function streamViaIPC(
     messages,
   })
 
-  return new Promise<string>((resolve, reject) => {
-    let acc = ''
-    let done = false
-
-    const removeToken = window.electronAPI.onAiStreamToken((data) => {
-      if (data.requestId === requestId) {
-        acc += data.token
-        onToken(data.token)
-      }
-    })
-
-    const removeDone = window.electronAPI.onAiStreamDone((data) => {
-      if (data.requestId === requestId) {
-        done = true
-        cleanup()
-        resolve(acc)
-      }
-    })
-
-    const removeError = window.electronAPI.onAiStreamError((data) => {
-      if (data.requestId === requestId) {
-        done = true
-        cleanup()
-        reject(new Error(data.error))
-      }
-    })
-
-    function cleanup() {
-      removeToken()
-      removeDone()
-      removeError()
-    }
-
-    // 取消支持
-    signal?.addEventListener('abort', () => {
-      if (!done) {
-        cleanup()
-        reject(new DOMException('Aborted', 'AbortError'))
-      }
-    })
-  })
+  return promise
 }
 
 // 非流式：收集完整结果
