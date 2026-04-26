@@ -76,9 +76,19 @@ export default function AIChatPanel() {
       timestamp: assistantTimestamp
     })
 
+    // 流式更新辅助函数
+    const updateLastMessage = (acc: string) => {
+      const store = useAppStore.getState()
+      const lastMsg = store.messages[store.messages.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant' && lastMsg.timestamp === assistantTimestamp) {
+        useAppStore.setState({
+          messages: [...store.messages.slice(0, -1), { ...lastMsg, content: acc }]
+        })
+      }
+    }
+
     try {
       if ((mode === 'ask' || mode === 'summarize' || mode === 'polish') && currentNote) {
-        // 非对话模式：流式调用
         const request: AIRequest = {
           type: mode as AIRequest['type'],
           content: currentNote.content || '',
@@ -87,43 +97,30 @@ export default function AIChatPanel() {
         }
 
         let acc = ''
-        for await (const token of streamCallAI(request)) {
-          if (!streamingRef.current) break
+        await streamCallAI(request, (token) => {
+          if (!streamingRef.current) return
           acc += token
-          // 更新最后一条 assistant 消息
-          const store = useAppStore.getState()
-          const lastMsg = store.messages[store.messages.length - 1]
-          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.timestamp === assistantTimestamp) {
-            useAppStore.setState({
-              messages: [...store.messages.slice(0, -1), { ...lastMsg, content: acc }]
-            })
-          }
-        }
+          updateLastMessage(acc)
+        }, signal)
       } else {
-        // 对话模式：流式 + RAG
         let ragContext = ''
         if (ragEnabled && notes.length > 0) {
           ragContext = buildRAGContext(userMessage, notes, 3)
         }
 
         let acc = ''
-        for await (const token of streamChatWithAI({
+        await streamChatWithAI({
           messages,
           userInput: userMessage,
           noteContent: currentNote?.content,
           ragContext: ragContext || undefined,
           signal,
-        })) {
-          if (!streamingRef.current) break
-          acc += token
-          const store = useAppStore.getState()
-          const lastMsg = store.messages[store.messages.length - 1]
-          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.timestamp === assistantTimestamp) {
-            useAppStore.setState({
-              messages: [...store.messages.slice(0, -1), { ...lastMsg, content: acc }]
-            })
-          }
-        }
+          onToken: (token) => {
+            if (!streamingRef.current) return
+            acc += token
+            updateLastMessage(acc)
+          },
+        })
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {

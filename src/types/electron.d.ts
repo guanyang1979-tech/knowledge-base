@@ -28,6 +28,10 @@ export interface ElectronAPI {
   // 系统
   openExternal: (url: string) => Promise<void>
   testConnection: (config: any) => Promise<{ success: boolean; error?: string }>
+  aiChat: (params: any) => Promise<string>
+  onAiStreamToken: (callback: (data: { requestId: string; token: string }) => void) => () => void
+  onAiStreamDone: (callback: (data: { requestId: string }) => void) => () => void
+  onAiStreamError: (callback: (data: { requestId: string; error: string }) => void) => () => void
 
   // 文件监控
   startWatch: () => Promise<{ success: boolean; error?: string }>

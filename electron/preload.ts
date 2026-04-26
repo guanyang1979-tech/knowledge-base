@@ -30,6 +30,19 @@ const electronAPI = {
   // 系统
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   testConnection: (config: any) => ipcRenderer.invoke('test-connection', config),
+  aiChat: (params: any) => ipcRenderer.invoke('ai-chat', params),
+  onAiStreamToken: (callback: (data: { requestId: string; token: string }) => void) => {
+    ipcRenderer.on('ai-stream-token', (_, data) => callback(data))
+    return () => { ipcRenderer.removeAllListeners('ai-stream-token') }
+  },
+  onAiStreamDone: (callback: (data: { requestId: string }) => void) => {
+    ipcRenderer.on('ai-stream-done', (_, data) => callback(data))
+    return () => { ipcRenderer.removeAllListeners('ai-stream-done') }
+  },
+  onAiStreamError: (callback: (data: { requestId: string; error: string }) => void) => {
+    ipcRenderer.on('ai-stream-error', (_, data) => callback(data))
+    return () => { ipcRenderer.removeAllListeners('ai-stream-error') }
+  },
 
   // 文件监控
   startWatch: () => ipcRenderer.invoke('start-watch'),

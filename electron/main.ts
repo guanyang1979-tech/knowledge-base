@@ -286,6 +286,121 @@ function setupIpcHandlers() {
       return { success: false, error: error.message || '连接失败' }
     }
   })
+
+  // AI 对话（流式）— 通过事件推送 token
+  ipcMain.handle('ai-chat', async (event, params: {
+    provider: string; baseUrl: string; apiKey: string; model: string
+    messages: { role: string; content: string }[]
+  }) => {
+    const requestId = Date.now().toString()
+    const { provider, baseUrl, apiKey, model, messages } = params
+
+    try {
+      if (provider === 'anthropic') {
+        const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
+        const systemMsg = messages.find(m => m.role === 'system')
+        const otherMsgs = messages.filter(m => m.role !== 'system')
+
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model, max_tokens: 4096,
+            system: systemMsg?.content,
+            messages: otherMsgs.map(m => ({ role: m.role, content: m.content })),
+            stream: true,
+          }),
+        })
+
+        if (!resp.ok) {
+          const err = await resp.text()
+          event.sender.send('ai-stream-error', { requestId, error: `${resp.status} ${err}` })
+          return
+        }
+
+        const reader = resp.body?.getReader()
+        if (!reader) return
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (trimmed.startsWith('event:')) continue
+            if (!trimmed.startsWith('data:')) continue
+            const data = trimmed.slice(5).trim()
+            if (data === '[DONE]') break
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                event.sender.send('ai-stream-token', { requestId, token: parsed.delta.text })
+              }
+            } catch {}
+          }
+        }
+      } else {
+        const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model, messages, max_tokens: 4096, stream: true,
+          }),
+        })
+
+        if (!resp.ok) {
+          const err = await resp.text()
+          event.sender.send('ai-stream-error', { requestId, error: `API (${resp.status}): ${err}` })
+          return
+        }
+
+        const reader = resp.body?.getReader()
+        if (!reader) return
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed.startsWith('data:')) continue
+            const data = trimmed.slice(5).trim()
+            if (data === '[DONE]') break
+            try {
+              const parsed = JSON.parse(data)
+              const content = parsed.choices?.[0]?.delta?.content
+              if (content) {
+                event.sender.send('ai-stream-token', { requestId, token: content })
+              }
+            } catch {}
+          }
+        }
+      }
+
+      event.sender.send('ai-stream-done', { requestId })
+    } catch (error: any) {
+      event.sender.send('ai-stream-error', { requestId, error: error.message })
+    }
+
+    return requestId
+  })
+
   ipcMain.handle('get-notes-dir', () => getNotesDir())
   ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory'] })

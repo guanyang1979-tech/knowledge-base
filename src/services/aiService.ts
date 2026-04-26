@@ -1,237 +1,10 @@
 import type { AIRequest, AIResponse, Config, Message } from '../types'
 
 // ============================================================
-// Provider 抽象
+// 全局配置
 // ============================================================
 
-interface ChatParams {
-  messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
-  model: string
-  maxTokens: number
-  signal?: AbortSignal
-}
-
-// 全局配置（由 initAIConfig 设置）
 let currentConfig: Config | null = null
-
-// ============================================================
-// Anthropic Provider（Claude）— 直接 fetch，不依赖 SDK
-// ============================================================
-
-async function anthropicChat(params: ChatParams, baseUrl: string, apiKey: string): Promise<string> {
-  const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
-  const systemMsg = params.messages.find(m => m.role === 'system')
-  const otherMsgs = params.messages.filter(m => m.role !== 'system')
-
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: params.model,
-      max_tokens: params.maxTokens,
-      system: systemMsg?.content,
-      messages: otherMsgs.map(m => ({ role: m.role, content: m.content })),
-    }),
-    signal: params.signal,
-  })
-
-  if (!resp.ok) {
-    const err = await resp.text()
-    throw new Error(`Anthropic API (${resp.status}): ${err}`)
-  }
-
-  const data = await resp.json()
-  return data.content?.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n') || ''
-}
-
-async function* anthropicStream(params: ChatParams, baseUrl: string, apiKey: string): AsyncGenerator<string> {
-  const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
-  const systemMsg = params.messages.find(m => m.role === 'system')
-  const otherMsgs = params.messages.filter(m => m.role !== 'system')
-
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: params.model,
-      max_tokens: params.maxTokens,
-      system: systemMsg?.content,
-      messages: otherMsgs.map(m => ({ role: m.role, content: m.content })),
-      stream: true,
-    }),
-    signal: params.signal,
-  })
-
-  if (!resp.ok) {
-    const err = await resp.text()
-    throw new Error(`Anthropic API (${resp.status}): ${err}`)
-  }
-
-  const reader = resp.body?.getReader()
-  if (!reader) throw new Error('无法获取响应流')
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('event:')) continue
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (data === '[DONE]') return
-
-      try {
-        const parsed = JSON.parse(data)
-        if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-          yield parsed.delta.text
-        }
-      } catch {
-        // 忽略解析错误
-      }
-    }
-  }
-}
-
-// ============================================================
-// OpenAI 兼容 Provider（DeepSeek / MiMo / Qwen / Kimi 等）
-// ============================================================
-
-async function openaiChat(params: ChatParams, baseUrl: string, apiKey: string): Promise<string> {
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
-  const body = {
-    model: params.model,
-    messages: params.messages,
-    max_tokens: params.maxTokens,
-    stream: false,
-  }
-
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: params.signal,
-  })
-
-  if (!resp.ok) {
-    const err = await resp.text()
-    throw new Error(`API 请求失败 (${resp.status}): ${err}`)
-  }
-
-  const data = await resp.json()
-  return data.choices?.[0]?.message?.content || ''
-}
-
-async function* openaiStream(params: ChatParams, baseUrl: string, apiKey: string): AsyncGenerator<string> {
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
-  const body = {
-    model: params.model,
-    messages: params.messages,
-    max_tokens: params.maxTokens,
-    stream: true,
-  }
-
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: params.signal,
-  })
-
-  if (!resp.ok) {
-    const err = await resp.text()
-    throw new Error(`API 请求失败 (${resp.status}): ${err}`)
-  }
-
-  const reader = resp.body?.getReader()
-  if (!reader) throw new Error('无法获取响应流')
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (data === '[DONE]') return
-
-      try {
-        const parsed = JSON.parse(data)
-        const content = parsed.choices?.[0]?.delta?.content
-        if (content) yield content
-      } catch {
-        // 忽略解析错误
-      }
-    }
-  }
-}
-
-// ============================================================
-// 统一接口
-// ============================================================
-
-function isAnthropic(config: Config): boolean {
-  return config.provider === 'anthropic'
-}
-
-async function chat(params: ChatParams): Promise<string> {
-  if (!currentConfig) throw new Error('AI 未配置')
-  if (isAnthropic(currentConfig)) {
-    return anthropicChat(params, currentConfig.baseUrl, currentConfig.apiKey)
-  }
-  return openaiChat(params, currentConfig.baseUrl, currentConfig.apiKey)
-}
-
-async function* streamChat(params: ChatParams): AsyncGenerator<string> {
-  if (!currentConfig) throw new Error('AI 未配置')
-  if (isAnthropic(currentConfig)) {
-    yield* anthropicStream(params, currentConfig.baseUrl, currentConfig.apiKey)
-  } else {
-    yield* openaiStream(params, currentConfig.baseUrl, currentConfig.apiKey)
-  }
-}
-
-// 收集流式结果
-async function collectStream(gen: AsyncGenerator<string>): Promise<string> {
-  let result = ''
-  for await (const token of gen) {
-    result += token
-  }
-  return result
-}
-
-// ============================================================
-// 初始化
-// ============================================================
 
 export function initAIConfig(config: Config) {
   currentConfig = config
@@ -239,6 +12,75 @@ export function initAIConfig(config: Config) {
 
 export function isAIInitialized(): boolean {
   return currentConfig !== null && currentConfig.apiKey !== ''
+}
+
+// ============================================================
+// 统一 IPC 流式调用
+// ============================================================
+
+async function streamViaIPC(
+  messages: { role: string; content: string }[],
+  onToken: (token: string) => void,
+  signal?: AbortSignal
+): Promise<string> {
+  if (!currentConfig?.apiKey) throw new Error('请先在设置中配置 AI 模型')
+
+  const requestId = await window.electronAPI.aiChat({
+    provider: currentConfig.provider,
+    baseUrl: currentConfig.baseUrl,
+    apiKey: currentConfig.apiKey,
+    model: currentConfig.model,
+    messages,
+  })
+
+  return new Promise<string>((resolve, reject) => {
+    let acc = ''
+    let done = false
+
+    const removeToken = window.electronAPI.onAiStreamToken((data) => {
+      if (data.requestId === requestId) {
+        acc += data.token
+        onToken(data.token)
+      }
+    })
+
+    const removeDone = window.electronAPI.onAiStreamDone((data) => {
+      if (data.requestId === requestId) {
+        done = true
+        cleanup()
+        resolve(acc)
+      }
+    })
+
+    const removeError = window.electronAPI.onAiStreamError((data) => {
+      if (data.requestId === requestId) {
+        done = true
+        cleanup()
+        reject(new Error(data.error))
+      }
+    })
+
+    function cleanup() {
+      removeToken()
+      removeDone()
+      removeError()
+    }
+
+    // 取消支持
+    signal?.addEventListener('abort', () => {
+      if (!done) {
+        cleanup()
+        reject(new DOMException('Aborted', 'AbortError'))
+      }
+    })
+  })
+}
+
+// 非流式：收集完整结果
+async function chatViaIPC(
+  messages: { role: string; content: string }[]
+): Promise<string> {
+  return streamViaIPC(messages, () => {})
 }
 
 // ============================================================
@@ -275,7 +117,7 @@ function buildUserMessage(request: AIRequest): string {
 }
 
 // ============================================================
-// 快捷函数（非流式）
+// 非流式快捷函数
 // ============================================================
 
 export async function callAI(request: AIRequest): Promise<AIResponse> {
@@ -287,14 +129,10 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
     const systemPrompt = getSystemPrompt(request.type)
     const userMessage = buildUserMessage(request)
 
-    const content = await chat({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      model: currentConfig.model,
-      maxTokens: 4096,
-    })
+    const content = await chatViaIPC([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ])
 
     if (request.type === 'tag') {
       const tags = content.split(',').map(t => t.trim()).filter(t => t)
@@ -324,7 +162,7 @@ export async function suggestTags(content: string): Promise<AIResponse> {
 }
 
 // ============================================================
-// 对话（非流式，保留兼容）
+// 对话（非流式）
 // ============================================================
 
 export async function chatWithAI(messages: Message[], userInput: string, noteContent?: string): Promise<AIResponse> {
@@ -343,15 +181,11 @@ export async function chatWithAI(messages: Message[], userInput: string, noteCon
       content: m.content,
     }))
 
-    const content = await chat({
-      messages: [
-        { role: 'system', content: '你是一个知识库助手。请根据笔记内容和对话历史回答用户问题。' },
-        ...conversationHistory,
-        { role: 'user', content: context + userInput },
-      ],
-      model: currentConfig.model,
-      maxTokens: 4096,
-    })
+    const content = await chatViaIPC([
+      { role: 'system', content: '你是一个知识库助手。请根据笔记内容和对话历史回答用户问题。' },
+      ...conversationHistory,
+      { role: 'user', content: context + userInput },
+    ])
 
     return { success: true, content }
   } catch (error: any) {
@@ -361,7 +195,7 @@ export async function chatWithAI(messages: Message[], userInput: string, noteCon
 }
 
 // ============================================================
-// 流式对话（新接口，供 AIChatPanel 使用）
+// 流式接口（供 AIChatPanel 使用）
 // ============================================================
 
 export interface StreamChatOptions {
@@ -370,9 +204,10 @@ export interface StreamChatOptions {
   noteContent?: string
   ragContext?: string
   signal?: AbortSignal
+  onToken: (token: string) => void
 }
 
-export async function* streamChatWithAI(options: StreamChatOptions): AsyncGenerator<string> {
+export async function streamChatWithAI(options: StreamChatOptions): Promise<void> {
   if (!currentConfig?.apiKey) {
     throw new Error('请先在设置中配置 AI 模型')
   }
@@ -386,24 +221,22 @@ export async function* streamChatWithAI(options: StreamChatOptions): AsyncGenera
   }
 
   const conversationHistory = options.messages.map(m => ({
-    role: m.role as 'user' | 'assistant',
+    role: m.role,
     content: m.content,
   }))
 
-  yield* streamChat({
-    messages: [
-      { role: 'system', content: '你是一个知识库助手。请根据笔记内容和对话历史回答用户问题。如果知识库中有相关笔记，请参考回答。' },
-      ...conversationHistory,
-      { role: 'user', content: context + options.userInput },
-    ],
-    model: currentConfig.model,
-    maxTokens: currentConfig.maxTokens,
-    signal: options.signal,
-  })
+  await streamViaIPC([
+    { role: 'system', content: '你是一个知识库助手。请根据笔记内容和对话历史回答用户问题。如果知识库中有相关笔记，请参考回答。' },
+    ...conversationHistory,
+    { role: 'user', content: context + options.userInput },
+  ], options.onToken, options.signal)
 }
 
-// 流式快捷函数（摘要/润色/问答）
-export async function* streamCallAI(request: AIRequest): AsyncGenerator<string> {
+export async function streamCallAI(
+  request: AIRequest,
+  onToken: (token: string) => void,
+  signal?: AbortSignal
+): Promise<void> {
   if (!currentConfig?.apiKey) {
     throw new Error('请先在设置中配置 AI 模型')
   }
@@ -411,12 +244,8 @@ export async function* streamCallAI(request: AIRequest): AsyncGenerator<string> 
   const systemPrompt = getSystemPrompt(request.type)
   const userMessage = buildUserMessage(request)
 
-  yield* streamChat({
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ],
-    model: currentConfig.model,
-    maxTokens: currentConfig.maxTokens,
-  })
+  await streamViaIPC([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userMessage },
+  ], onToken, signal)
 }
