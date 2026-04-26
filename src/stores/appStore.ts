@@ -46,6 +46,9 @@ interface AppState {
   // 导出面板
   exportOpen: boolean
 
+  // 关于面板
+  aboutOpen: boolean
+
   // Actions
   setNotes: (notes: Note[]) => void
   setCurrentNote: (note: Note | null) => void
@@ -69,6 +72,7 @@ interface AppState {
   setStatisticsOpen: (open: boolean) => void
   setTrashOpen: (open: boolean) => void
   setExportOpen: (open: boolean) => void
+  setAboutOpen: (open: boolean) => void
 
   // 刷新笔记
   refreshNotes: () => Promise<void>
@@ -104,6 +108,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   statisticsOpen: false,
   trashOpen: false,
   exportOpen: false,
+  aboutOpen: false,
 
   // Actions
   setNotes: (notes) => set({ notes }),
@@ -135,6 +140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setStatisticsOpen: (open) => set({ statisticsOpen: open }),
   setTrashOpen: (open) => set({ trashOpen: open }),
   setExportOpen: (open) => set({ exportOpen: open }),
+  setAboutOpen: (open) => set({ aboutOpen: open }),
 
   // 刷新笔记
   refreshNotes: async () => {

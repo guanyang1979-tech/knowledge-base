@@ -64,6 +64,7 @@ export interface ElectronAPI {
   onMenuFocusSearch: (callback: () => void) => () => void
   onMenuToggleSidebar: (callback: () => void) => () => void
   onMenuExportNote: (callback: () => void) => () => void
+  onMenuShowAbout: (callback: () => void) => () => void
 }
 
 // 笔记元数据（不含完整内容）

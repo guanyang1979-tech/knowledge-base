@@ -10,6 +10,7 @@ import ImportPanel from './components/ImportPanel'
 import StatisticsPanel from './components/StatisticsPanel'
 import TrashPanel from './components/TrashPanel'
 import ExportPanel from './components/ExportPanel'
+import AboutModal from './components/AboutModal'
 import SplashScreen from './components/SplashScreen'
 import WelcomeDashboard from './components/WelcomeDashboard'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -35,6 +36,8 @@ function App() {
     setTrashOpen,
     exportOpen,
     setExportOpen,
+    aboutOpen,
+    setAboutOpen,
     searchQuery,
     setSearchQuery,
     sidebarWidth,
@@ -92,6 +95,9 @@ function App() {
         setExportOpen(true)
       }
     })
+    const removeMenuShowAbout = window.electronAPI.onMenuShowAbout?.(() => {
+      setAboutOpen(true)
+    })
 
     return () => {
       removeFileAdded?.()
@@ -100,6 +106,7 @@ function App() {
       removeMenuFocusSearch?.()
       removeMenuToggleSidebar?.()
       removeMenuExportNote?.()
+      removeMenuShowAbout?.()
     }
   }, [])
 
@@ -262,6 +269,7 @@ function App() {
       {statisticsOpen && <StatisticsPanel onClose={() => setStatisticsOpen(false)} />}
       {trashOpen && <TrashPanel onClose={() => setTrashOpen(false)} onRestore={() => refreshNotes()} />}
       {exportOpen && <ExportPanel onClose={() => setExportOpen(false)} />}
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
       </div>
     </ErrorBoundary>
   )

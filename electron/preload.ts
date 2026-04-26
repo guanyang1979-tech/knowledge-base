@@ -87,6 +87,10 @@ const electronAPI = {
   onMenuExportNote: (callback: () => void) => {
     ipcRenderer.on('menu-export-note', () => callback())
     return () => { ipcRenderer.removeAllListeners('menu-export-note') }
+  },
+  onMenuShowAbout: (callback: () => void) => {
+    ipcRenderer.on('menu-show-about', () => callback())
+    return () => { ipcRenderer.removeAllListeners('menu-show-about') }
   }
 }
 

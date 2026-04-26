@@ -191,41 +191,7 @@ function createMenu() {
         {
           label: '关于',
           click: async () => {
-            const result = await dialog.showMessageBox(mainWindow!, {
-              type: 'info',
-              title: '关于知识库助手',
-              message: '知识库助手 v2.3.0',
-              detail: '一个基于 AI 的个人知识库管理系统。\n\n' +
-                '功能特性：\n' +
-                '  - Markdown 笔记编辑与实时预览\n' +
-                '  - Obsidian 语法完整支持\n' +
-                '  - AI 智能问答、摘要、润色\n' +
-                '  - 相关笔记智能推荐\n' +
-                '  - Excel/Word/PDF 文档导入\n' +
-                '  - 可拖拽面板布局\n' +
-                '  - 深色/浅色主题\n\n' +
-                '技术栈：Electron + React + TypeScript\n\n' +
-                '点击「查看文档」可打开使用说明。',
-              buttons: ['查看文档', '确定'],
-              defaultId: 1,
-              cancelId: 1
-            })
-            if (result.response === 0) {
-              // 优先查找项目根目录的 README
-              const appPath = app.isPackaged
-                ? path.dirname(app.getPath('exe'))
-                : path.join(__dirname, '..', '..')
-              const readmePath = path.join(appPath, 'README.md')
-              if (fs.existsSync(readmePath)) {
-                shell.openPath(readmePath)
-              } else {
-                // 尝试其他路径
-                const fallbackPath = path.join(process.cwd(), 'README.md')
-                if (fs.existsSync(fallbackPath)) {
-                  shell.openPath(fallbackPath)
-                }
-              }
-            }
+            mainWindow?.webContents.send('menu-show-about')
           }
         },
         { type: 'separator' },
@@ -497,7 +463,24 @@ created: ${new Date().toISOString()}
     return { success: true }
   })
 
-  ipcMain.handle('open-external', (_, url: string) => shell.openExternal(url))
+  ipcMain.handle('open-external', (_, url: string) => {
+    if (url === 'open-readme') {
+      const appPath = app.isPackaged
+        ? path.dirname(app.getPath('exe'))
+        : path.join(__dirname, '..', '..')
+      const readmePath = path.join(appPath, 'README.md')
+      if (fs.existsSync(readmePath)) {
+        shell.openPath(readmePath)
+      } else {
+        const fallbackPath = path.join(process.cwd(), 'README.md')
+        if (fs.existsSync(fallbackPath)) {
+          shell.openPath(fallbackPath)
+        }
+      }
+    } else {
+      shell.openExternal(url)
+    }
+  })
 
   // 文件监视
   ipcMain.handle('start-watch', () => {
