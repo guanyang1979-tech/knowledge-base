@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { AIRequest, AIResponse, Config, Message } from '../types'
 
 // ============================================================
@@ -16,50 +15,95 @@ interface ChatParams {
 let currentConfig: Config | null = null
 
 // ============================================================
-// Anthropic Provider（Claude）
+// Anthropic Provider（Claude）— 直接 fetch，不依赖 SDK
 // ============================================================
 
-let anthropicClient: Anthropic | null = null
-
-function initAnthropicProvider(apiKey: string) {
-  anthropicClient = new Anthropic({ apiKey, maxRetries: 2 })
-}
-
-async function anthropicChat(params: ChatParams): Promise<string> {
-  if (!anthropicClient) throw new Error('Anthropic 未初始化')
+async function anthropicChat(params: ChatParams, baseUrl: string, apiKey: string): Promise<string> {
+  const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
   const systemMsg = params.messages.find(m => m.role === 'system')
   const otherMsgs = params.messages.filter(m => m.role !== 'system')
 
-  const message = await anthropicClient.messages.create({
-    model: params.model,
-    max_tokens: params.maxTokens,
-
-    system: systemMsg?.content,
-    messages: otherMsgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: params.model,
+      max_tokens: params.maxTokens,
+      system: systemMsg?.content,
+      messages: otherMsgs.map(m => ({ role: m.role, content: m.content })),
+    }),
+    signal: params.signal,
   })
 
-  return message.content
-    .filter((b: any) => b.type === 'text')
-    .map((b: any) => b.text)
-    .join('\n')
+  if (!resp.ok) {
+    const err = await resp.text()
+    throw new Error(`Anthropic API (${resp.status}): ${err}`)
+  }
+
+  const data = await resp.json()
+  return data.content?.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n') || ''
 }
 
-async function* anthropicStream(params: ChatParams): AsyncGenerator<string> {
-  if (!anthropicClient) throw new Error('Anthropic 未初始化')
+async function* anthropicStream(params: ChatParams, baseUrl: string, apiKey: string): AsyncGenerator<string> {
+  const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
   const systemMsg = params.messages.find(m => m.role === 'system')
   const otherMsgs = params.messages.filter(m => m.role !== 'system')
 
-  const stream = anthropicClient.messages.stream({
-    model: params.model,
-    max_tokens: params.maxTokens,
-
-    system: systemMsg?.content,
-    messages: otherMsgs.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: params.model,
+      max_tokens: params.maxTokens,
+      system: systemMsg?.content,
+      messages: otherMsgs.map(m => ({ role: m.role, content: m.content })),
+      stream: true,
+    }),
+    signal: params.signal,
   })
 
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && (event as any).delta?.text) {
-      yield (event as any).delta.text
+  if (!resp.ok) {
+    const err = await resp.text()
+    throw new Error(`Anthropic API (${resp.status}): ${err}`)
+  }
+
+  const reader = resp.body?.getReader()
+  if (!reader) throw new Error('无法获取响应流')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('event:')) continue
+      if (!trimmed.startsWith('data:')) continue
+      const data = trimmed.slice(5).trim()
+      if (data === '[DONE]') return
+
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+          yield parsed.delta.text
+        }
+      } catch {
+        // 忽略解析错误
+      }
     }
   }
 }
@@ -162,7 +206,7 @@ function isAnthropic(config: Config): boolean {
 async function chat(params: ChatParams): Promise<string> {
   if (!currentConfig) throw new Error('AI 未配置')
   if (isAnthropic(currentConfig)) {
-    return anthropicChat(params)
+    return anthropicChat(params, currentConfig.baseUrl, currentConfig.apiKey)
   }
   return openaiChat(params, currentConfig.baseUrl, currentConfig.apiKey)
 }
@@ -170,7 +214,7 @@ async function chat(params: ChatParams): Promise<string> {
 async function* streamChat(params: ChatParams): AsyncGenerator<string> {
   if (!currentConfig) throw new Error('AI 未配置')
   if (isAnthropic(currentConfig)) {
-    yield* anthropicStream(params)
+    yield* anthropicStream(params, currentConfig.baseUrl, currentConfig.apiKey)
   } else {
     yield* openaiStream(params, currentConfig.baseUrl, currentConfig.apiKey)
   }
@@ -191,36 +235,10 @@ async function collectStream(gen: AsyncGenerator<string>): Promise<string> {
 
 export function initAIConfig(config: Config) {
   currentConfig = config
-  if (config.provider === 'anthropic' && config.apiKey) {
-    initAnthropicProvider(config.apiKey)
-  }
 }
 
 export function isAIInitialized(): boolean {
   return currentConfig !== null && currentConfig.apiKey !== ''
-}
-
-// 测试连接
-export async function testConnection(config: Config): Promise<{ success: boolean; error?: string }> {
-  try {
-    if (config.provider === 'anthropic') {
-      const client = new Anthropic({ apiKey: config.apiKey, maxRetries: 1 })
-      await client.messages.create({
-        model: config.model || 'claude-sonnet-4-20250514',
-        max_tokens: 10,
-        messages: [{ role: 'user', content: 'Hi' }],
-      })
-    } else {
-      await openaiChat(
-        { messages: [{ role: 'user', content: 'Hi' }], model: config.model, maxTokens: 10 },
-        config.baseUrl,
-        config.apiKey
-      )
-    }
-    return { success: true }
-  } catch (error: any) {
-    return { success: false, error: error.message || '连接失败' }
-  }
 }
 
 // ============================================================
