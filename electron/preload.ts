@@ -91,6 +91,10 @@ const electronAPI = {
   onMenuShowAbout: (callback: () => void) => {
     ipcRenderer.on('menu-show-about', () => callback())
     return () => { ipcRenderer.removeAllListeners('menu-show-about') }
+  },
+  onMenuOpenSettings: (callback: () => void) => {
+    ipcRenderer.on('menu-open-settings', () => callback())
+    return () => { ipcRenderer.removeAllListeners('menu-open-settings') }
   }
 }
 

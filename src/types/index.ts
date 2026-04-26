@@ -19,7 +19,14 @@ export interface Template {
 
 // 配置类型
 export interface Config {
+  // AI 模型配置
+  provider: 'anthropic' | 'openai'
   apiKey: string
+  baseUrl: string
+  model: string
+  temperature: number
+  maxTokens: number
+
   syncDir: string
   theme: 'light' | 'dark'
   notesDir: string

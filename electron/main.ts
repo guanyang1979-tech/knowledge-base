@@ -152,6 +152,8 @@ function createMenu() {
         { type: 'separator' },
         { label: '导出当前笔记', accelerator: 'CmdOrCtrl+E', click: () => mainWindow?.webContents.send('menu-export-note') },
         { type: 'separator' },
+        { label: '设置', accelerator: 'CmdOrCtrl+,', click: () => mainWindow?.webContents.send('menu-open-settings') },
+        { type: 'separator' },
         { label: '退出', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() }
       ]
     },

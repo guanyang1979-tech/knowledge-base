@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAppStore } from './stores/appStore'
-import { initAnthropic } from './services/aiService'
+import { initAIConfig } from './services/aiService'
 import Sidebar from './components/Sidebar'
 import NoteList from './components/NoteList'
 import NoteEditor from './components/NoteEditor'
@@ -70,7 +70,7 @@ function App() {
       const savedConfig = await window.electronAPI.getConfig()
       setConfig(savedConfig)
       if (savedConfig.apiKey) {
-        initAnthropic(savedConfig.apiKey)
+        initAIConfig(savedConfig)
       }
       await refreshNotes()
       const templates = await window.electronAPI.getTemplates()
@@ -98,6 +98,9 @@ function App() {
     const removeMenuShowAbout = window.electronAPI.onMenuShowAbout?.(() => {
       setAboutOpen(true)
     })
+    const removeMenuOpenSettings = window.electronAPI.onMenuOpenSettings?.(() => {
+      setSettingsOpen(true)
+    })
 
     return () => {
       removeFileAdded?.()
@@ -107,13 +110,14 @@ function App() {
       removeMenuToggleSidebar?.()
       removeMenuExportNote?.()
       removeMenuShowAbout?.()
+      removeMenuOpenSettings?.()
     }
   }, [])
 
   // 配置变更时重新初始化 AI
   useEffect(() => {
     if (config.apiKey) {
-      initAnthropic(config.apiKey)
+      initAIConfig(config)
     }
   }, [config.apiKey])
 

@@ -85,7 +85,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   categories: [],
   templates: [],
   config: {
+    provider: 'openai',
     apiKey: '',
+    baseUrl: '',
+    model: '',
+    temperature: 0.7,
+    maxTokens: 4096,
     syncDir: '',
     theme: 'light',
     notesDir: '',

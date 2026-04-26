@@ -65,6 +65,7 @@ export interface ElectronAPI {
   onMenuToggleSidebar: (callback: () => void) => () => void
   onMenuExportNote: (callback: () => void) => () => void
   onMenuShowAbout: (callback: () => void) => () => void
+  onMenuOpenSettings: (callback: () => void) => () => void
 }
 
 // 笔记元数据（不含完整内容）
@@ -80,7 +81,12 @@ export interface NoteMetadata {
 
 // 配置类型
 export interface Config {
+  provider: 'anthropic' | 'openai'
   apiKey: string
+  baseUrl: string
+  model: string
+  temperature: number
+  maxTokens: number
   syncDir: string
   theme: 'light' | 'dark'
   notesDir: string
