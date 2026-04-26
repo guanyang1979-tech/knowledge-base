@@ -244,13 +244,24 @@ function setupIpcHandlers() {
   ipcMain.handle('test-connection', async (_, testConfig: any) => {
     try {
       if (testConfig.provider === 'anthropic') {
-        const Anthropic = (await import('@anthropic-ai/sdk')).default
-        const client = new Anthropic({ apiKey: testConfig.apiKey, maxRetries: 1 })
-        await client.messages.create({
-          model: testConfig.model || 'claude-sonnet-4-20250514',
-          max_tokens: 10,
-          messages: [{ role: 'user', content: 'Hi' }],
+        const url = `${testConfig.baseUrl.replace(/\/$/, '')}/v1/messages`
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': testConfig.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: testConfig.model,
+            max_tokens: 10,
+            messages: [{ role: 'user', content: 'Hi' }],
+          }),
         })
+        if (!resp.ok) {
+          const err = await resp.text()
+          return { success: false, error: `${resp.status} ${err}` }
+        }
       } else {
         const url = `${testConfig.baseUrl.replace(/\/$/, '')}/chat/completions`
         const resp = await fetch(url, {
