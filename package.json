@@ -1,6 +1,6 @@
 {
   "name": "knowledge-base",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "author": "12792",
   "description": "个人知识库 AI 助手系统",
   "main": "dist-electron/main.js",
