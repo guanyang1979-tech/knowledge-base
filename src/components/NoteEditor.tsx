@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import MDEditor from '@uiw/react-md-editor'
 import { useAppStore } from '../stores/appStore'
 import { suggestTags } from '../services/aiService'
+import RelatedNotes from './RelatedNotes'
 
 export default function NoteEditor() {
   const { currentNote, refreshNotes, config, setCurrentNote } = useAppStore()
@@ -11,6 +12,7 @@ export default function NoteEditor() {
   const [showAI, setShowAI] = useState(false)
   const [previewMode, setPreviewMode] = useState<'edit' | 'live'>('live')
   const [frontmatter, setFrontmatter] = useState<Record<string, string>>({})
+  const [showRelated, setShowRelated] = useState(false)
   const [tagSuggestionLoading, setTagSuggestionLoading] = useState(false)
   const contentRef = useRef(content)
   const lastSavedContentRef = useRef('')
@@ -212,6 +214,17 @@ export default function NoteEditor() {
               AI
             </button>
             <button
+              onClick={() => setShowRelated(!showRelated)}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                showRelated
+                  ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                  : 'text-gray-500 dark:text-white/30 hover:bg-gray-100 dark:hover:bg-white/[0.06]'
+              }`}
+              title="相关笔记"
+            >
+              关联
+            </button>
+            <button
               onClick={handleSave}
               className="px-2 py-1 text-xs bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors"
             >
@@ -275,6 +288,22 @@ export default function NoteEditor() {
           }}
         />
       </div>
+
+      {/* 相关笔记面板 */}
+      {showRelated && (
+        <div className="border-t border-gray-200 dark:border-white/[0.06] max-h-[200px] overflow-y-auto bg-white dark:bg-[#0d0d14]">
+          <RelatedNotes onSelectNote={(path) => {
+            window.electronAPI.readNote(path).then(result => {
+              if (result.success) {
+                const note = useAppStore.getState().notes.find(n => n.path === path)
+                if (note) {
+                  useAppStore.getState().setCurrentNote({ ...note, content: result.content })
+                }
+              }
+            })
+          }} />
+        </div>
+      )}
     </div>
   )
 }

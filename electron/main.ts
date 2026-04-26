@@ -632,9 +632,29 @@ created: ${new Date().toISOString()}
         case '.xlsx': case '.xls':
           if (xlsx) {
             const workbook = xlsx.readFile(filePath)
-            const data: any = {}
-            workbook.SheetNames.forEach(sn => { const sheet = workbook.Sheets[sn]; data[sn] = (xlsx.utils.sheet_to_json(sheet, { header: 1 }) as any[][]).map(row => row.join(' | ')).join('\n') })
-            content = Object.entries(data).map(([sn, sd]) => `## ${sn}\n\n${sd}`).join('\n\n---\n\n')
+            const sheets: string[] = []
+            workbook.SheetNames.forEach((sn: string) => {
+              const sheet = workbook.Sheets[sn]
+              const rawData = xlsx.utils.sheet_to_json(sheet, { header: 1 }) as any[][]
+              if (rawData.length === 0) return
+
+              // 转换为 Markdown 表格
+              const headers = rawData[0].map((h: any) => String(h ?? ''))
+              const rows = rawData.slice(1)
+
+              let table = `| ${headers.join(' | ')} |\n`
+              table += `| ${headers.map(() => '---').join(' | ')} |\n`
+              for (const row of rows) {
+                const cells = row.map((c: any) => String(c ?? ''))
+                // 补齐列数
+                while (cells.length < headers.length) cells.push('')
+                table += `| ${cells.join(' | ')} |\n`
+              }
+
+              const rowCount = rows.length
+              sheets.push(`## ${sn}\n\n共 ${rowCount} 行数据\n\n${table}`)
+            })
+            content = sheets.join('\n\n---\n\n')
           }
           break
         case '.pdf':
