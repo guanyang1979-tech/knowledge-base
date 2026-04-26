@@ -294,10 +294,12 @@ function setupIpcHandlers() {
   }) => {
     const requestId = Date.now().toString()
     const { provider, baseUrl, apiKey, model, messages } = params
+    log('INFO', `AI chat request: ${provider} ${model} ${baseUrl}`)
 
     try {
       if (provider === 'anthropic') {
         const url = `${baseUrl.replace(/\/$/, '')}/v1/messages`
+        log('INFO', `Anthropic URL: ${url}`)
         const systemMsg = messages.find(m => m.role === 'system')
         const otherMsgs = messages.filter(m => m.role !== 'system')
 
@@ -316,35 +318,44 @@ function setupIpcHandlers() {
           }),
         })
 
+        log('INFO', `Anthropic response status: ${resp.status}`)
+
         if (!resp.ok) {
           const err = await resp.text()
+          log('ERROR', `Anthropic error: ${resp.status} ${err}`)
           event.sender.send('ai-stream-error', { requestId, error: `${resp.status} ${err}` })
           return
         }
 
         const reader = resp.body?.getReader()
-        if (!reader) return
+        if (!reader) { log('ERROR', 'No response body reader'); return }
         const decoder = new TextDecoder()
         let buffer = ''
+        let tokenCount = 0
+
+        log('INFO', 'Anthropic streaming started')
 
         while (true) {
           const { done, value } = await reader.read()
-          if (done) break
+          if (done) { log('INFO', `Anthropic stream done, tokens: ${tokenCount}`); break }
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
           for (const line of lines) {
             const trimmed = line.trim()
-            if (trimmed.startsWith('event:')) continue
+            if (!trimmed || trimmed.startsWith('event:')) continue
             if (!trimmed.startsWith('data:')) continue
             const data = trimmed.slice(5).trim()
             if (data === '[DONE]') break
             try {
               const parsed = JSON.parse(data)
               if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                tokenCount++
                 event.sender.send('ai-stream-token', { requestId, token: parsed.delta.text })
               }
-            } catch {}
+            } catch (e) {
+              log('ERROR', `Parse error: ${data}`)
+            }
           }
         }
       } else {
@@ -395,6 +406,7 @@ function setupIpcHandlers() {
 
       event.sender.send('ai-stream-done', { requestId })
     } catch (error: any) {
+      log('ERROR', `AI chat error: ${error.message}`)
       event.sender.send('ai-stream-error', { requestId, error: error.message })
     }
 
