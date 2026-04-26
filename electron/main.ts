@@ -190,13 +190,37 @@ function createMenu() {
       submenu: [
         {
           label: '关于',
-          click: () => {
-            dialog.showMessageBox(mainWindow!, {
+          click: async () => {
+            const result = await dialog.showMessageBox(mainWindow!, {
               type: 'info',
               title: '关于知识库助手',
-              message: '知识库助手 v2.1.0',
-              detail: '一个基于 AI 的个人知识库管理系统。'
+              message: '知识库助手 v2.3.0',
+              detail: `一个基于 AI 的个人知识库管理系统。
+
+功能特性：
+• Markdown 笔记编辑与实时预览
+• Obsidian 语法完整支持
+• AI 智能问答、摘要、润色
+• 相关笔记智能推荐
+• Excel/Word/PDF 文档导入
+• 可拖拽面板布局
+• 深色/浅色主题
+
+技术栈：Electron + React + TypeScript + Tailwind CSS
+
+点击"查看文档"可打开使用说明。`,
+              buttons: ['查看文档', '确定'],
+              defaultId: 1,
+              cancelId: 1
             })
+            if (result.response === 0) {
+              const readmePath = path.join(path.dirname(app.getPath('exe')), '..', 'README.md')
+              if (fs.existsSync(readmePath)) {
+                shell.openPath(readmePath)
+              } else {
+                shell.openExternal('https://github.com')
+              }
+            }
           }
         },
         { type: 'separator' },
