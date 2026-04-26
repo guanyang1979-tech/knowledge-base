@@ -24,7 +24,12 @@ let configPath: string
 
 // 默认配置
 const defaultConfig = {
+  provider: 'openai',
   apiKey: '',
+  baseUrl: '',
+  model: '',
+  temperature: 0.7,
+  maxTokens: 4096,
   syncDir: '',
   theme: 'light',
   notesDir: '',
