@@ -15,7 +15,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [apiKey, setApiKey] = useState(config.apiKey)
   const [baseUrl, setBaseUrl] = useState(config.baseUrl || '')
   const [model, setModel] = useState(config.model || '')
-  const [maxTokens, setMaxTokens] = useState(config.maxTokens ?? 4096)
 
   // 其他配置
   const [syncDir, setSyncDir] = useState(config.syncDir)
@@ -49,7 +48,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
       apiKey: apiKey.trim(),
       baseUrl,
       model,
-      maxTokens,
     })
     setTestResult(result.success ? 'success' : 'error')
     if (!result.success) setTestError(result.error || '')
@@ -85,7 +83,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         apiKey: apiKey.trim(),
         baseUrl,
         model,
-        maxTokens,
         syncDir,
         notesDir,
         theme,
@@ -228,19 +225,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="例如: deepseek-chat"
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none bg-white dark:bg-gray-700"
-              />
-            </div>
-
-            {/* 最大 Token */}
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">最大 Token</label>
-              <input
-                type="number"
-                value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 4096)}
-                min={256}
-                max={128000}
                 className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none bg-white dark:bg-gray-700"
               />
             </div>

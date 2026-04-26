@@ -275,7 +275,7 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
         { role: 'user', content: userMessage },
       ],
       model: currentConfig.model,
-      maxTokens: currentConfig.maxTokens,
+      maxTokens: 4096,
     })
 
     if (request.type === 'tag') {
@@ -332,7 +332,7 @@ export async function chatWithAI(messages: Message[], userInput: string, noteCon
         { role: 'user', content: context + userInput },
       ],
       model: currentConfig.model,
-      maxTokens: currentConfig.maxTokens,
+      maxTokens: 4096,
     })
 
     return { success: true, content }
