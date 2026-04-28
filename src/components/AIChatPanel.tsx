@@ -5,6 +5,8 @@ import { buildRAGContext } from '../services/ragService'
 import type { AIRequest } from '../types'
 
 const MAX_MESSAGES = 50
+let messageIdCounter = 0
+function generateMessageId() { return `msg-${Date.now()}-${++messageIdCounter}` }
 
 export default function AIChatPanel() {
   const {
@@ -51,6 +53,7 @@ export default function AIChatPanel() {
 
     if (messages.length >= MAX_MESSAGES) {
       addMessage({
+        id: generateMessageId(),
         role: 'assistant',
         content: `对话已达到 ${MAX_MESSAGES} 条消息上限，请开始新对话。`,
         timestamp: Date.now()
@@ -60,6 +63,7 @@ export default function AIChatPanel() {
     }
 
     addMessage({
+      id: generateMessageId(),
       role: 'user',
       content: userMessage,
       timestamp: Date.now()
@@ -69,18 +73,19 @@ export default function AIChatPanel() {
     const signal = abortControllerRef.current.signal
 
     // 添加占位的 assistant 消息（流式填充）
-    const assistantTimestamp = Date.now()
+    const assistantId = generateMessageId()
     addMessage({
+      id: assistantId,
       role: 'assistant',
       content: '',
-      timestamp: assistantTimestamp
+      timestamp: Date.now()
     })
 
     // 流式更新辅助函数
     const updateLastMessage = (acc: string) => {
       const store = useAppStore.getState()
       const lastMsg = store.messages[store.messages.length - 1]
-      if (lastMsg && lastMsg.role === 'assistant' && lastMsg.timestamp === assistantTimestamp) {
+      if (lastMsg && lastMsg.id === assistantId) {
         useAppStore.setState({
           messages: [...store.messages.slice(0, -1), { ...lastMsg, content: acc }]
         })
@@ -126,7 +131,7 @@ export default function AIChatPanel() {
       if (error.name !== 'AbortError') {
         const store = useAppStore.getState()
         const lastMsg = store.messages[store.messages.length - 1]
-        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.timestamp === assistantTimestamp) {
+        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id === assistantId) {
           useAppStore.setState({
             messages: [...store.messages.slice(0, -1), { ...lastMsg, content: `错误: ${error.message}` }]
           })
@@ -166,6 +171,7 @@ export default function AIChatPanel() {
     }
 
     addMessage({
+      id: generateMessageId(),
       role: 'assistant',
       content: systemPrompt,
       timestamp: Date.now()
@@ -246,7 +252,7 @@ export default function AIChatPanel() {
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.map((message) => (
-          <div key={message.timestamp} className={`${message.role === 'user' ? 'ml-6' : 'mr-3'}`}>
+          <div key={message.id} className={`${message.role === 'user' ? 'ml-6' : 'mr-3'}`}>
             <div
               className={`p-2.5 rounded-lg text-sm ${
                 message.role === 'user'

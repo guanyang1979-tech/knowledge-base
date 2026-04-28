@@ -59,6 +59,7 @@ export interface AIResponse {
 
 // 消息类型（用于 AI 对话）
 export interface Message {
+  id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: number

@@ -291,8 +291,9 @@ function setupIpcHandlers() {
   ipcMain.handle('ai-chat', async (event, params: {
     provider: string; baseUrl: string; apiKey: string; model: string
     messages: { role: string; content: string }[]
+    requestId: string
   }) => {
-    const requestId = Date.now().toString()
+    const requestId = params.requestId || Date.now().toString()
     const { provider, baseUrl, apiKey, model, messages } = params
     log('INFO', `AI chat request: ${provider} ${model} ${baseUrl}`)
 

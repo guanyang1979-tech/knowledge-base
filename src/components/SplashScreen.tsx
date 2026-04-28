@@ -137,7 +137,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
 
         {/* Version & Author */}
         <div className="mt-6 flex items-center justify-center gap-3">
-          <span className="text-white/15 text-xs tracking-wider">v2.3.0</span>
+          <span className="text-white/15 text-xs tracking-wider">v2.4.0</span>
           <span className="text-white/[0.06]">|</span>
           <span className="text-white/15 text-xs tracking-wider">by G.Y</span>
         </div>

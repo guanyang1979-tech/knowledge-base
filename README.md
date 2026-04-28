@@ -2,9 +2,9 @@
 
 ## 一、项目简介
 
-知识库助手是一个基于本地存储的个人知识库系统，结合 AI 能力（Claude API）提升工作和生活效率。支持笔记管理、AI 问答、内容摘要、写作润色等功能。
+知识库助手是一个基于本地存储的个人知识库系统，结合 AI 能力提升工作和生活效率。支持多模型接入（国内大模型开箱即用）、笔记管理、AI 问答、内容摘要、写作润色、跨笔记知识检索等功能。
 
-**当前版本：v2.3.0**
+**当前版本：v2.4.0**
 
 ## 二、环境要求
 
@@ -12,7 +12,7 @@
 |------|------|
 | 操作系统 | Windows 10/11 (64位) |
 | Node.js | 18.x 或更高版本 |
-| Claude API Key | 可从 anthropic.com 申请（可选） |
+| AI API Key | 任意兼容 OpenAI/Anthropic 协议的 API Key（可选） |
 
 ## 三、快速开始
 
@@ -26,11 +26,22 @@ cd d:\cc-projects\projects\knowledge-base
 npm install
 ```
 
-### 步骤 2：配置 Claude API Key（可选）
+### 步骤 2：配置 AI 模型（可选）
 
-1. 访问 https://console.anthropic.com/
-2. 创建 API Key
-3. 运行项目后，在设置界面中输入 API Key
+1. 运行项目后，打开设置（文件 → 设置 或 `Ctrl+,`）
+2. 选择协议类型（OpenAI 兼容 / Anthropic）
+3. 填写 API 地址、API Key、模型名称
+4. 点击「测试连接」验证配置
+5. 点击「保存」完成配置
+
+支持的国内模型（OpenAI 兼容协议）：
+
+| 服务商 | API 地址 | 默认模型 |
+|--------|----------|----------|
+| 小米 MiMo | `https://api.xiaomi.com/v1` | MiMo-v2.5 |
+| DeepSeek | `https://api.deepseek.com` | deepseek-chat |
+| 通义千问 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | qwen-plus |
+| 硅基流动 | `https://api.siliconflow.cn/v1` | deepseek-ai/DeepSeek-V3 |
 
 ### 步骤 3：启动应用
 
@@ -85,11 +96,14 @@ npm run preview
 
 | 功能 | 说明 | 使用方法 |
 |------|------|----------|
+| 自由对话 | 自由对话，支持知识库检索 | AI 面板 → 对话模式 |
 | 知识问答 | 基于笔记内容回答问题 | 打开笔记 → AI 面板 → 问答模式 |
 | 内容摘要 | 自动总结笔记要点 | 打开笔记 → AI 面板 → 摘要模式 |
 | 写作润色 | 改进笔记写作质量 | 打开笔记 → AI 面板 → 润色模式 |
 | 自动标签 | AI 建议笔记标签 | 编辑器工具栏 → 标签按钮 |
 | 相关笔记推荐 | 智能推荐关联笔记 | 编辑器工具栏 → 关联按钮 |
+
+**多模型支持**：支持 OpenAI 兼容协议（国内大模型）和 Anthropic 协议，流式输出逐字显示。
 
 ### 4.6 Obsidian 语法支持
 
@@ -194,11 +208,12 @@ rm -rf node_modules
 npm install
 ```
 
-### Q2：Claude API 调用失败
+### Q2：AI 调用失败
 
-1. 确认 API Key 已正确配置
-2. 检查网络连接
-3. 查看 API Key 是否有足够配额
+1. 打开设置，点击「测试连接」检查配置是否正确
+2. 确认 API 地址、API Key、模型名称填写正确
+3. 检查网络连接（国内模型需确保能访问对应 API 地址）
+4. 查看 API Key 是否有足够配额
 
 ### Q3：笔记不显示
 
@@ -229,7 +244,7 @@ npm install
 | Tailwind CSS | 样式系统 |
 | Vite | 前端构建 |
 | @uiw/react-md-editor | Markdown 编辑器 |
-| @anthropic-ai/sdk | Claude API |
+| BM25 | 轻量知识检索（RAG） |
 
 ## 十、卸载
 
@@ -241,5 +256,5 @@ rm -rf d:\cc-projects\projects\knowledge-base
 
 ---
 
-*文档版本：v2.3.0*
+*文档版本：v2.4.0*
 *最后更新：2026-04-26*

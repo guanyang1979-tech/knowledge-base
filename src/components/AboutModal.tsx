@@ -59,7 +59,7 @@ export default function AboutModal({ onClose }: AboutModalProps) {
           {/* Version */}
           <div className="flex items-center gap-2 mb-5">
             <span className="px-2 py-0.5 text-[11px] rounded-full bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 font-medium">
-              v2.3.0
+              v2.4.0
             </span>
             <span className="text-xs text-gray-400 dark:text-white/25">by G.Y</span>
           </div>

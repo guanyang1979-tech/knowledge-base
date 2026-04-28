@@ -1,6 +1,6 @@
 {
   "name": "knowledge-base",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "author": "G.Y",
   "description": "个人知识库 AI 助手系统",
   "main": "dist-electron/main.js",
@@ -13,7 +13,6 @@
     "electron:build": "npm run build:vite && electron-builder"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@uiw/react-md-editor": "^4.0.5",
     "chokidar": "^4.0.3",
     "mammoth": "^1.12.0",

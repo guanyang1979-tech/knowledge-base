@@ -18,6 +18,8 @@ export function isAIInitialized(): boolean {
 // 统一 IPC 流式调用
 // ============================================================
 
+let requestIdCounter = 0
+
 async function streamViaIPC(
   messages: { role: string; content: string }[],
   onToken: (token: string) => void,
@@ -25,21 +27,23 @@ async function streamViaIPC(
 ): Promise<string> {
   if (!currentConfig?.apiKey) throw new Error('请先在设置中配置 AI 模型')
 
-  // 先设置监听，再发起调用，避免丢失事件
+  // 客户端生成唯一 requestId，在发起调用前就确定，避免事件竞态
+  const requestId = `req-${Date.now()}-${++requestIdCounter}`
+
   let acc = ''
   let done = false
-  let resolvePromise: (value: string) => void
-  let rejectPromise: (reason: any) => void
+  let resolvePromise!: (value: string) => void
+  let rejectPromise!: (reason: any) => void
 
   const removeToken = window.electronAPI.onAiStreamToken((data) => {
-    if (data.requestId === currentRequestId) {
+    if (data.requestId === requestId) {
       acc += data.token
       onToken(data.token)
     }
   })
 
   const removeDone = window.electronAPI.onAiStreamDone((data) => {
-    if (data.requestId === currentRequestId) {
+    if (data.requestId === requestId) {
       done = true
       cleanup()
       resolvePromise(acc)
@@ -47,7 +51,7 @@ async function streamViaIPC(
   })
 
   const removeError = window.electronAPI.onAiStreamError((data) => {
-    if (data.requestId === currentRequestId) {
+    if (data.requestId === requestId) {
       done = true
       cleanup()
       rejectPromise(new Error(data.error))
@@ -67,20 +71,19 @@ async function streamViaIPC(
     }
   })
 
-  let currentRequestId = ''
-
   const promise = new Promise<string>((resolve, reject) => {
     resolvePromise = resolve
     rejectPromise = reject
   })
 
-  // 发起 IPC 调用
-  currentRequestId = await window.electronAPI.aiChat({
+  // 发起 IPC 调用，传入客户端生成的 requestId
+  window.electronAPI.aiChat({
     provider: currentConfig.provider,
     baseUrl: currentConfig.baseUrl,
     apiKey: currentConfig.apiKey,
     model: currentConfig.model,
     messages,
+    requestId,
   })
 
   return promise
